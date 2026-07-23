@@ -1,0 +1,60 @@
+# name: test/sql/ssh_tunnel_e2e.test
+# description: Real end-to-end SSH tunnel — forward a local port through the dockerised
+#              sshd bastion to the internal HTTP service and read a CSV over httpfs.
+#              No mocks: exercises the full accept-loop + direct-tcpip pump against a
+#              real SSH server and a real HTTP server on an isolated docker network.
+# group: [tunnel]
+#
+# Bring the services up first:  make test_up   (docker compose in test/integration/)
+# then run with the env vars set (see test/integration/README.md):
+#   ERPL_SSH_HOST=127.0.0.1 ERPL_SSH_PORT=2222 ERPL_SSH_USER=root ERPL_SSH_PASSWORD=testpass
+
+require erpl_tunnel
+
+require httpfs
+
+require-env ERPL_SSH_HOST
+require-env ERPL_SSH_PORT
+require-env ERPL_SSH_USER
+require-env ERPL_SSH_PASSWORD
+
+# The private HTTP service is only reachable from inside the docker network, as
+# 'http-service:8000'. The tunnel is the only way to reach it from the host.
+statement ok
+CREATE SECRET bastion (
+    TYPE ssh_tunnel,
+    ssh_host '${ERPL_SSH_HOST}',
+    ssh_port '${ERPL_SSH_PORT}',
+    ssh_user '${ERPL_SSH_USER}',
+    password '${ERPL_SSH_PASSWORD}',
+    auth_method 'password'
+);
+
+# Forward localhost:9080 -> (bastion) -> http-service:8000
+statement ok
+PRAGMA tunnel_create(secret := 'bastion',
+    remote_host := 'http-service', remote_port := 8000,
+    local_port := 9080, timeout := 30);
+
+# The tunnel now appears as active, bound to loopback.
+query I
+SELECT count(*) FROM tunnels() WHERE local_port = 9080 AND remote_host = 'http-service';
+----
+1
+
+# Real payload over the tunnel: read the CSV the private service serves.
+query IITI
+SELECT id, name, city, age FROM read_csv_auto('http://localhost:9080/data.csv') ORDER BY id LIMIT 3;
+----
+1	Alice	New York	30
+2	Bob	Los Angeles	25
+3	Charlie	Chicago	35
+
+statement ok
+PRAGMA tunnel_close_all;
+
+# After close the tunnel is gone (idempotent, deterministic teardown).
+query I
+SELECT count(*) FROM tunnels();
+----
+0

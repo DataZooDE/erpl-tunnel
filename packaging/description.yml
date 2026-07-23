@@ -1,0 +1,35 @@
+# Community Extensions descriptor for erpl_tunnel.
+# Copy this into duckdb/community-extensions as extensions/erpl_tunnel/description.yml
+# when opening the distribution PR (pending the license/distribution decision, BRD R2).
+extension:
+  name: erpl_tunnel
+  description: Tunnel raw TCP (quack, SAP RFC, HTTP) over SSH, Tailscale, or NetBird from DuckDB
+  version: 0.1.0
+  language: C++
+  build: cmake
+  license: BSL-1.1
+  excluded_platforms: "windows_amd64_mingw;windows_amd64_rtools;wasm_mvp;wasm_eh;wasm_threads"
+  requires_toolchains: ""
+  maintainers:
+    - datazoo
+
+repo:
+  github: DataZooDE/erpl-tunnel
+  ref: main
+
+docs:
+  hello_world: |
+    -- Open an SSH tunnel to reach a service behind a firewall, then use localhost:port
+    CREATE SECRET s (TYPE ssh_tunnel, host 'bastion.example.com', user 'jump',
+                     password 'secret');
+    PRAGMA tunnel_create(secret := 's', remote_host := 'sap.internal', remote_port := 3300,
+                         local_port := 9001);
+    SELECT * FROM tunnels();
+  extended_description: |
+    erpl_tunnel lets a DuckDB instance reach a remote TCP endpoint — the DuckDB quack
+    remote protocol, SAP RFC, or HTTP — across NAT and firewalls with one pasted
+    credential and nothing external to install. It forwards a local 127.0.0.1 listener
+    to a remote host:port over one of three transports: classic SSH local port
+    forwarding (libssh2, no Go), or an in-process mesh-VPN node (Tailscale via tsnet,
+    NetBird via client/embed) that is embedded in the extension and loaded only when a
+    mesh backend is first used. No daemon, no root, no kernel TUN. Minimum DuckDB v1.4.5.

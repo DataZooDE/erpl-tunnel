@@ -1,0 +1,37 @@
+# Build output
+build
+cmake-build-debug
+vcpkg_installed/
+testext
+duckdb_unittest_tempdir/
+
+# Editors / tooling
+.idea
+.cache
+.vscode
+.DS_Store
+.Rhistory
+test/python/__pycache__/
+.ai
+.claude/
+.codex/
+.antigravitycli/
+
+# Logs, temp, local DuckDB data
+*.log
+*.tmp
+*.trc
+*.duckdb
+*.duckdb.wal
+
+# Credentials — never commit
+.env
+.env.*
+.adt.creds
+*credentials*.json
+*secret*.json
+!*_secret.cpp
+!*_secret.hpp
+
+# Generated IDoc corpus (perf/compat fixtures; regenerate via scripts/gen_idoc_corpus.sh)
+corpus/
