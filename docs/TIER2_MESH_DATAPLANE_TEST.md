@@ -90,14 +90,40 @@ tunnel between a userspace node (A) and a kernel-TUN node (B).
 
 Same shape; the cost is the control plane.
 
-**Spike first (do before the compose): can NetBird enroll with a setup key WITHOUT a
-full IdP?** Setup keys are non-interactive, so management + signal + relay *may* run
-with a static config and no Zitadel. Verify by standing up management/signal/relay
-from a pinned config and enrolling one `netbird` container via `NB_SETUP_KEY`.
-- If **yes** → a 3-container control plane (management+signal+relay), CI-viable.
-- If **no** → use NetBird's official quickstart compose (adds dashboard + Zitadel),
-  pinned to a version; heavier and slower but real. Gate this job so it can be
-  `workflow_dispatch`-only if it's too heavy for every push.
+### Spike outcome (2026-07-23, netbird v0.74.7) — the setup-key problem
+
+Peer enrollment via a setup key is a **gRPC path that does NOT need an IdP** — the
+IdP (Zitadel) only gates *user*/dashboard auth. So management + signal + relay can
+run without Zitadel *for enrollment*. The blocker is **creating** the setup key,
+which normally goes through the IdP-authenticated management API. Findings:
+
+- `management --help` exposes `--single-account-mode-domain` (default on) but no flag
+  to mint a setup key headlessly.
+- The store (`management/server/store`, FileStore/SQLite) has `SaveAccount` +
+  `SaveSetupKey`. So the no-IdP path is: **pre-seed the store** with an account +
+  a known setup key, then run management against it and enroll the peer.
+- Cost of seeding: a valid `Account` needs a Network (CIDR for peer-IP allocation),
+  a default group, settings and a domain; and `SetupKey` stores a **hash** (`Key` /
+  `KeySecret`) so the seeder must replicate NetBird's `hashSetupKey`. That's ~100+
+  lines of Go against **internal** packages — brittle across version bumps (R3).
+
+**Two viable implementations (pick when doing step 4):**
+- **(A) Store-seeder helper** — a small Go program (build-tagged, in `test/`) that
+  imports `management/server/store` + `types`, creates an account with a network and
+  a fixed setup key, and writes the store; management mounts it. No Zitadel, ~3
+  containers, CI-friendly — but couples to NetBird internals (pin + re-verify on bump).
+- **(B) Official quickstart** — `getnetbird.sh`-generated compose (management + signal
+  + relay + dashboard + **Zitadel**), pinned. Real and sanctioned, but ~6 containers
+  and a slow Zitadel init; gate as `workflow_dispatch`/nightly.
+
+**Recommendation:** (A) for CI viability; keep (B) documented as the fallback. This
+was NOT taken further in this pass — the Tailscale Tier 2 data plane is the delivered
+flagship; NetBird Tier 2 data plane is the remaining item with the runbook above.
+
+**Note:** whichever path, the same **direct-WireGuard-on-one-subnet** trick from the
+Tailscale test applies (put node A's container and the `netbird` peer on one docker
+subnet + set the **relay** URL to a mutually reachable address), so the relay-TLS/
+reachability class of issues is sidestepped the same way.
 
 **Files**
 - `test/integration/netbird/docker-compose.yml` — management + signal + relay (+ IdP
