@@ -1,0 +1,39 @@
+# name: test/sql/tunnel_errors.test
+# description: Error-quality regressions for the erpl defects (BRD §8.2, FR-8, NFR-3).
+#              These need no SSH server — they assert the extension fails fast and
+#              actionably instead of erpl's silent localhost/agent default.
+# group: [tunnel]
+
+require erpl_tunnel
+
+# --- §8.2: a missing secret must be a hard, actionable error, never the silent
+#           localhost+agent default erpl used. ------------------------------------
+statement error
+PRAGMA tunnel_create(secret='does_not_exist', remote_host='h', remote_port='80', local_port='9099');
+----
+secret 'does_not_exist' not found
+
+# --- §8.2: no secret argument at all is equally a hard error (no anonymous node). --
+statement error
+PRAGMA tunnel_create(remote_host='h', remote_port='80', local_port='9098');
+----
+secret
+
+# --- FR-8: SSH agent auth is not supported — fail with an actionable message that
+#           names the alternative (key/password), not a silent false. -------------
+statement ok
+CREATE SECRET agent_secret (
+    TYPE ssh_tunnel, ssh_host '127.0.0.1', ssh_port '2222', ssh_user 'root',
+    auth_method 'agent'
+);
+
+statement error
+PRAGMA tunnel_create(secret='agent_secret', remote_host='h', remote_port='80', local_port='9097');
+----
+agent
+
+# The message must point the user at the supported methods.
+statement error
+PRAGMA tunnel_create(secret='agent_secret', remote_host='h', remote_port='80', local_port='9096');
+----
+Use auth_method 'key' or

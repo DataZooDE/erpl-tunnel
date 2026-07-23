@@ -20,13 +20,26 @@ int64_t TunnelManager::CreateTunnel(const TunnelAuthParams &auth_params,
                                    const string &remote_host, int remote_port, int local_port,
                                    const string &ssh_host, int ssh_port,
                                    const string &ssh_user,
-                                   int timeout_seconds) {
+                                   int timeout_seconds,
+                                   bool bind_all) {
+    // Reject unsupported auth up front, before opening a socket, so the failure is
+    // fast and actionable rather than surfacing as a generic post-handshake error
+    // (FR-8). SSH-agent auth is declared but not implemented.
+    if (auth_params.auth_method == kAuthMethodAgent) {
+        throw InvalidInputException(
+            "Tunnel: SSH agent authentication is not supported. Use auth_method 'key' or "
+            "'password' instead (set private_key_path/passphrase, or password, on the secret).");
+    }
+
     int64_t tunnel_id = GenerateTunnelId();
-    
+
     try {
         // Create tunnel connection
         auto connection = std::make_shared<TunnelConnection>();
         
+        // Loopback bind by default; all-interfaces only on explicit opt-in (FR-2).
+        connection->SetBindAll(bind_all);
+
         // Connect to SSH server
         connection->Connect(ssh_host, ssh_port, ssh_user,
                            remote_host, remote_port, local_port);

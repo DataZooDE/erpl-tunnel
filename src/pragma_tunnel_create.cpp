@@ -17,7 +17,8 @@ string TunnelCreate(ClientContext &context, const FunctionParameters &parameters
     int remote_port = 0;
     int local_port = 0;
     int timeout_seconds = 60; // Default timeout
-    
+    bool bind_all = false;    // Loopback bind by default (FR-2/ADR-006)
+
     for (const auto &param : parameters.named_parameters) {
         if (param.first == "remote_host") {
             remote_host = param.second.ToString();
@@ -27,6 +28,8 @@ string TunnelCreate(ClientContext &context, const FunctionParameters &parameters
             local_port = param.second.GetValue<int32_t>();
         } else if (param.first == "timeout") {
             timeout_seconds = param.second.GetValue<int32_t>();
+        } else if (param.first == "bind_all") {
+            bind_all = param.second.GetValue<bool>();
         }
     }
     
@@ -35,9 +38,9 @@ string TunnelCreate(ClientContext &context, const FunctionParameters &parameters
     }
     
     // Create tunnel using the tunnel manager with timeout
-    int64_t tunnel_id = g_tunnel_manager->CreateTunnel(auth_params, remote_host, remote_port, local_port, 
-                                                      auth_params.ssh_host, auth_params.ssh_port, auth_params.ssh_user, 
-                                                      timeout_seconds);
+    int64_t tunnel_id = g_tunnel_manager->CreateTunnel(auth_params, remote_host, remote_port, local_port,
+                                                      auth_params.ssh_host, auth_params.ssh_port, auth_params.ssh_user,
+                                                      timeout_seconds, bind_all);
     
     auto pragma_query = StringUtil::Format("SELECT %lld as tunnel_id, 'Tunnel created successfully' as message", tunnel_id);
     return pragma_query;
@@ -50,6 +53,7 @@ PragmaFunction CreateTunnelCreatePragma() {
     tunnel_create_pragma.named_parameters["remote_port"] = LogicalType::INTEGER;
     tunnel_create_pragma.named_parameters["local_port"] = LogicalType::INTEGER;
     tunnel_create_pragma.named_parameters["timeout"] = LogicalType::INTEGER;
+    tunnel_create_pragma.named_parameters["bind_all"] = LogicalType::BOOLEAN;
 
     return tunnel_create_pragma;
 }

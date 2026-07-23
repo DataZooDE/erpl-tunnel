@@ -18,8 +18,10 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace duckdb {
 
@@ -54,6 +56,9 @@ struct TunnelConnectionAttributes {
     std::string remote_host;
     int32_t remote_port{0};
     int32_t local_port{0};
+    // Local listener bind address. Defaults to loopback (127.0.0.1) — a security
+    // fix over erpl's INADDR_ANY (FR-2/ADR-006). "0.0.0.0" only via explicit opt-in.
+    std::string bind_addr{"127.0.0.1"};
     std::string status;
     std::string error_message;
 
@@ -64,6 +69,7 @@ struct TunnelConnectionAttributes {
                remote_host == other.remote_host &&
                remote_port == other.remote_port &&
                local_port == other.local_port &&
+               bind_addr == other.bind_addr &&
                status == other.status &&
                error_message == other.error_message;
     }
@@ -113,6 +119,12 @@ public:
     bool AuthenticateWithKey(const std::string& private_key_path, const std::string& passphrase = "");
     bool AuthenticateWithAgent();
     
+    // Bind the local listener to all interfaces (0.0.0.0) instead of the default
+    // loopback (127.0.0.1). Opt-in only (FR-2/ADR-006). Call before StartWorker.
+    void SetBindAll(bool bind_all) noexcept {
+        attributes_.bind_addr = bind_all ? "0.0.0.0" : "127.0.0.1";
+    }
+
     // Thread management
     void StartWorker();
     void StopWorker();
@@ -148,6 +160,12 @@ private:
     
     // Worker thread for data forwarding
     std::thread worker_thread_;
+
+    // Per-connection forwarding workers. erpl detached these (fire-and-forget),
+    // leaking threads that outlived Close(). We track and join them for
+    // deterministic teardown (FR-5/§8.3).
+    std::vector<std::thread> forward_threads_;
+    std::mutex forward_threads_mutex_;
 };
 
 /**

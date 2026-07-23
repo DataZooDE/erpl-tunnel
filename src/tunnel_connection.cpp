@@ -197,48 +197,41 @@ void TunnelConnection::Connect(const std::string& ssh_host, int32_t ssh_port, co
     attributes_.remote_port = remote_port;
     attributes_.local_port = local_port;
     
-    // Create socket and connect to SSH server
-    ssh_socket_ = CreateSocket();
-    if (ssh_socket_ < 0) {
-        attributes_.error_message = "Failed to create socket for SSH connection";
-        throw IOException("Failed to create socket for SSH connection to " + ssh_host);
+    // Resolve the SSH host with getaddrinfo — handles hostnames (not just IPv4
+    // literals) and IPv6, replacing erpl's inet_addr + IPv4-only gethostbyname
+    // (FR-9). Try each returned address until one connects.
+    struct addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;     // IPv4 or IPv6
+    hints.ai_socktype = SOCK_STREAM;
+    struct addrinfo *res = nullptr;
+    const std::string port_str = std::to_string(ssh_port);
+    const int gai = getaddrinfo(ssh_host.c_str(), port_str.c_str(), &hints, &res);
+    if (gai != 0 || res == nullptr) {
+        attributes_.error_message = "Failed to resolve host: " + ssh_host;
+        throw IOException("Tunnel: could not resolve SSH host '" + ssh_host + "': " +
+                          std::string(gai_strerror(gai)) + ". Check the host name and DNS.");
     }
-    
-    // Use IPv4 for connection
-    sockaddr_in sin{};
-    sin.sin_family = AF_INET;
-    sin.sin_port = htons(ssh_port);
-    
-    // Convert hostname to IP address
-#ifdef WIN32
-    const unsigned long addr = inet_addr(ssh_host.c_str());
-#else
-    const in_addr_t addr = inet_addr(ssh_host.c_str());
-#endif
-    if (addr == INADDR_NONE) {
-        // Try to resolve hostname
-        struct hostent* he = gethostbyname(ssh_host.c_str());
-        if (he == nullptr) {
-            attributes_.error_message = "Failed to resolve hostname: " + ssh_host;
-            CloseSocket(ssh_socket_);
-            throw IOException("Failed to resolve hostname '" + ssh_host + "'. Check if the host is reachable.");
+
+    ssh_socket_ = -1;
+    for (struct addrinfo *ai = res; ai != nullptr; ai = ai->ai_next) {
+        const int32_t sock = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+        if (sock < 0) {
+            continue;
         }
-#ifdef WIN32
-        sin.sin_addr.s_addr = *reinterpret_cast<unsigned long*>(he->h_addr_list[0]);
-#else
-        sin.sin_addr.s_addr = *reinterpret_cast<in_addr_t*>(he->h_addr_list[0]);
-#endif
-    } else {
-        sin.sin_addr.s_addr = addr;
+        if (connect(sock, ai->ai_addr, static_cast<socklen_t>(ai->ai_addrlen)) == 0) {
+            ssh_socket_ = sock;
+            break;
+        }
+        CloseSocket(sock);
     }
-    
-    if (connect(ssh_socket_, reinterpret_cast<struct sockaddr*>(&sin), sizeof(struct sockaddr_in)) != 0) {
+    freeaddrinfo(res);
+
+    if (ssh_socket_ < 0) {
         attributes_.error_message = "Failed to connect to SSH host: " + ssh_host + ":" + std::to_string(ssh_port);
-        CloseSocket(ssh_socket_);
-        throw IOException("Failed to connect to SSH host '" + ssh_host + ":" + std::to_string(ssh_port) + 
-                         "'. Check if the SSH server is running and accessible.");
+        throw IOException("Tunnel: failed to connect to SSH host '" + ssh_host + ":" +
+                          std::to_string(ssh_port) + "'. Check the SSH server is running and reachable.");
     }
-    
+
     // Initialize SSH session
     session_ = libssh2_session_init();
     if (!session_) {
@@ -294,23 +287,23 @@ void TunnelConnection::Close() {
         ssh_socket_ = -1;
     }
     
-    // Try to join the worker thread with a timeout
+    // Deterministic teardown: the accept loop and every per-connection worker
+    // observe is_running_ == false and the closed session, then return. We JOIN
+    // them (erpl detached on a timeout, leaking threads and fds) — after Close()
+    // returns, no tunnel thread is still executing (FR-5/§8.3).
     if (worker_thread_.joinable()) {
-        // Use a timeout approach to avoid blocking indefinitely
-        const auto start_time = std::chrono::steady_clock::now();
-        const auto timeout_duration = std::chrono::seconds(3); // 3 second timeout
-        
-        while (worker_thread_.joinable() && 
-               std::chrono::steady_clock::now() - start_time < timeout_duration) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        
-        // If the thread is still joinable after timeout, detach it
-        if (worker_thread_.joinable()) {
-            worker_thread_.detach();
-        }
+        worker_thread_.join();
     }
-    
+    {
+        std::lock_guard<std::mutex> lock(forward_threads_mutex_);
+        for (auto &t : forward_threads_) {
+            if (t.joinable()) {
+                t.join();
+            }
+        }
+        forward_threads_.clear();
+    }
+
     is_connected_ = false;
     attributes_.status = kStatusClosed;
 }
@@ -338,19 +331,22 @@ TunnelAuthParams TunnelAuthParams::FromContext(ClientContext& context, const std
     auto& secret_manager = SecretManager::Get(context);
     auto transaction = CatalogTransaction::GetSystemCatalogTransaction(context);
     
-    // Lookup the secret
+    // Lookup the secret. A missing secret is a HARD, actionable error — never the
+    // silent localhost/agent default erpl used (BRD §8.2, NFR-3). Defaulting to an
+    // anonymous localhost node hides the real mistake and produces confusing
+    // downstream failures ("SSH user cannot be empty").
     auto secret_match = secret_manager.LookupSecret(transaction, secret_name, TUNNEL_SECRET_TYPE_NAME);
     if (!secret_match.HasMatch()) {
-        // If secret is not found, return default auth params instead of throwing
-        // This allows the function to be called without a secret configured
-        auth_params.ssh_host = "localhost";
-        auth_params.ssh_port = kDefaultSshPort;
-        auth_params.ssh_user = "";
-        auth_params.password = "";
-        auth_params.private_key_path = "";
-        auth_params.passphrase = "";
-        auth_params.auth_method = kAuthMethodAgent; // Default to SSH agent
-        return auth_params;
+        if (secret_name.empty() || secret_name == "*") {
+            throw InvalidInputException(
+                "Tunnel: no tunnel secret specified. Pass secret := '<name>' and create it "
+                "first, e.g. CREATE SECRET s (TYPE ssh_tunnel, ssh_host '…', ssh_user '…', "
+                "password '…'). Not defaulting to an anonymous localhost node.");
+        }
+        throw InvalidInputException(
+            "Tunnel: secret '" + secret_name + "' not found. Create it with "
+            "CREATE SECRET " + secret_name + " (TYPE ssh_tunnel, ssh_host '…', ssh_user '…', "
+            "password '…' /* or private_key_path */). Not defaulting to an anonymous node.");
     }
     
     // Cast to KeyValueSecret
@@ -449,9 +445,12 @@ bool TunnelConnection::AuthenticateWithAgent() {
         return false;
     }
     
-    // Note: libssh2_userauth_agent is not available in all libssh2 versions
-    // For now, we'll use a fallback approach
-    attributes_.error_message = "SSH agent authentication not supported in this libssh2 version";
+    // SSH-agent auth is not implemented (erpl left it stubbed). Fail with an
+    // actionable message that names the supported alternatives — never a silent
+    // false that surfaces later as a generic "authentication failed" (FR-8).
+    attributes_.error_message =
+        "SSH agent authentication is not supported. Use auth_method 'key' or 'password' "
+        "instead (set private_key_path/passphrase, or password, on the secret).";
     return false;
 }
 
@@ -475,11 +474,16 @@ void TunnelConnection::WorkerFunction() {
     fcntl(listen_sock, F_SETFL, flags | O_NONBLOCK);
 #endif
     
+    // Allow quick re-bind after a previous tunnel on the same port was closed.
+    int reuse = 1;
+    setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
     sockaddr_in listen_addr{};
     listen_addr.sin_family = AF_INET;
     listen_addr.sin_port = htons(attributes_.local_port);
-    listen_addr.sin_addr.s_addr = INADDR_ANY;
-    
+    // Bind loopback by default (FR-2/ADR-006); INADDR_ANY only on explicit opt-in.
+    listen_addr.sin_addr.s_addr = inet_addr(attributes_.bind_addr.c_str());
+
     if (bind(listen_sock, reinterpret_cast<struct sockaddr*>(&listen_addr), sizeof(listen_addr)) != 0) {
         attributes_.error_message = "Failed to bind to port " + std::to_string(attributes_.local_port) + 
                                    ". Port may be in use or insufficient permissions.";
@@ -541,10 +545,16 @@ void TunnelConnection::WorkerFunction() {
             continue;
         }
         
-        // Handle data forwarding in a separate thread
-        std::thread([this, channel, client_sock]() {
-            ForwardData(client_sock, channel);
-        }).detach();
+        // Handle data forwarding in a tracked worker thread. erpl detached these,
+        // leaking threads that outlived Close(); we keep them joinable and join on
+        // teardown (FR-5/§8.3). Opportunistically reap already-finished workers so
+        // the vector doesn't grow unbounded on long-lived tunnels.
+        {
+            std::lock_guard<std::mutex> lock(forward_threads_mutex_);
+            forward_threads_.emplace_back([this, channel, client_sock]() {
+                ForwardData(client_sock, channel);
+            });
+        }
     }
     
     CloseSocket(listen_sock);

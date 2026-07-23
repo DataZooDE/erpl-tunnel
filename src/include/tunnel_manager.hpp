@@ -20,11 +20,12 @@ public:
     ~TunnelManager();
 
     // Tunnel management
-    int64_t CreateTunnel(const TunnelAuthParams &auth_params, 
+    int64_t CreateTunnel(const TunnelAuthParams &auth_params,
                          const string &remote_host, int remote_port, int local_port,
                          const string &ssh_host, int ssh_port,
                          const string &ssh_user,
-                         int timeout_seconds = 60);
+                         int timeout_seconds = 60,
+                         bool bind_all = false);
     bool CloseTunnel(int64_t tunnel_id);
     bool IsTunnelActive(int64_t tunnel_id) const;
     

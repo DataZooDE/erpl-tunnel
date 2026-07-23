@@ -43,7 +43,8 @@ public:
         output.SetValue(4, 0, Value(tunnel_info.second.remote_host));               // remote_host
         output.SetValue(5, 0, Value::INTEGER(tunnel_info.second.remote_port));      // remote_port
         output.SetValue(6, 0, Value::INTEGER(tunnel_info.second.local_port));       // local_port
-        output.SetValue(7, 0, Value(tunnel_info.second.status));                    // status
+        output.SetValue(7, 0, Value(tunnel_info.second.bind_addr));                 // bind_addr
+        output.SetValue(8, 0, Value(tunnel_info.second.status));                    // status
 
         current_row++;
     }

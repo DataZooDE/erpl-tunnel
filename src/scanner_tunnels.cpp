@@ -14,8 +14,9 @@ unique_ptr<FunctionData> ListTunnelsBind(ClientContext &context, TableFunctionBi
     return_types.push_back(LogicalType::VARCHAR);   // remote_host
     return_types.push_back(LogicalType::INTEGER);   // remote_port
     return_types.push_back(LogicalType::INTEGER);   // local_port
+    return_types.push_back(LogicalType::VARCHAR);   // bind_addr
     return_types.push_back(LogicalType::VARCHAR);   // status
-    
+
     names.push_back("tunnel_id");
     names.push_back("ssh_host");
     names.push_back("ssh_port");
@@ -23,6 +24,7 @@ unique_ptr<FunctionData> ListTunnelsBind(ClientContext &context, TableFunctionBi
     names.push_back("remote_host");
     names.push_back("remote_port");
     names.push_back("local_port");
+    names.push_back("bind_addr");
     names.push_back("status");
     
     // Get the list of tunnels with detailed information from the tunnel manager
