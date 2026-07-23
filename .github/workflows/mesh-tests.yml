@@ -65,3 +65,31 @@ jobs:
           make mesh_up
           make mesh_e2e
           make mesh_down
+
+  tailscale-dataplane:
+    name: Tailscale data plane (Tier 2, real WireGuard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.26' }
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Set up vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$HOME/vcpkg"
+          "$HOME/vcpkg/bootstrap-vcpkg.sh"
+          echo "VCPKG_ROOT=$HOME/vcpkg" >> "$GITHUB_ENV"
+      # Release build so node A's container has no asan dependency.
+      - name: Build release (MESH_BACKEND=tailscale)
+        env: { MESH_BACKEND: tailscale, GEN: ninja }
+        run: make release
+      # Node B is the official tailscale daemon with kernel TUN; node A is our
+      # extension in a container on the same subnet (direct WireGuard).
+      - name: Tailscale data-plane test
+        run: |
+          BASE_IMAGE=ubuntu:24.04 \
+          DUCKDB_BIN=build/release/duckdb \
+          test/integration/mesh_dataplane_tailscale.sh \
+            build/release/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension

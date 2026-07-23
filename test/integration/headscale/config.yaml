@@ -1,8 +1,10 @@
 # Minimal Headscale config for hermetic, cloud-free CI (ADR-009). Open-source
 # Tailscale control server; tsnet nodes enroll against it via control_url.
-# server_url is the host-mapped URL (18080 -> container 8080) so the embedded DERP
-# region URL it advertises is reachable from the host-side tsnet node.
-server_url: http://127.0.0.1:18080
+# server_url uses the FIXED docker-network gateway IP (172.28.0.1, defined in the
+# compose network) mapped to :18080. This one URL is reachable from BOTH the host-side
+# tsnet node (node A) and container peers (node B) — the DERP region URL it advertises
+# therefore resolves for everyone, so relay-backed data-plane connectivity works.
+server_url: http://172.28.0.1:18080
 listen_addr: 0.0.0.0:8080
 metrics_listen_addr: 0.0.0.0:9090
 grpc_listen_addr: 0.0.0.0:50443

@@ -95,3 +95,12 @@ zero_dep:
 	DUCKDB_BIN=$(shell command -v duckdb) \
 	  test/integration/zero_dependency.sh \
 	  $(PROJ_DIR)build/release/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+
+# Tailscale data-plane test (Tier 2): real WireGuard traffic to an official
+# kernel-TUN tailscale peer. Needs a RELEASE tailscale/both build + docker.
+#   MESH_BACKEND=tailscale make release ts_dataplane
+.PHONY: ts_dataplane
+ts_dataplane:
+	DUCKDB_BIN=$(shell command -v duckdb) \
+	  test/integration/mesh_dataplane_tailscale.sh \
+	  $(PROJ_DIR)build/release/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension

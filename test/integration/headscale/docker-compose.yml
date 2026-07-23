@@ -1,10 +1,22 @@
-# Hermetic Tailscale control server for CI (ADR-009). No cloud, no TS_AUTHKEY.
-# The tsnet node inside the extension enrolls here via control_url=http://127.0.0.1:8080.
+# Hermetic Tailscale control server + a real kernel-TUN peer for the mesh
+# data-plane test (Tier 2). No cloud, no TS_AUTHKEY from Tailscale.
+#
+# Fixed subnet so the gateway IP (172.28.0.1) is known before Headscale starts and
+# can be baked into server_url — that URL must be reachable from the host node A AND
+# from container node B, which the gateway IP satisfies (see config.yaml).
+networks:
+  mesh:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
+
 services:
   headscale:
     image: headscale/headscale:0.26.1
     container_name: erpl-headscale
     command: serve
+    networks: [mesh]
     ports:
       - "18080:8080"
       - "3478:3478/udp"
@@ -12,5 +24,38 @@ services:
       - ./config.yaml:/etc/headscale/config.yaml:ro
       - headscale-data:/var/lib/headscale
 
+  # Node B: the OFFICIAL tailscale daemon with a real kernel-TUN interface. An HTTP
+  # server bound in its netns (ts-peer-svc) is then reachable at B's 100.64.x IP.
+  ts-peer:
+    image: tailscale/tailscale:stable
+    container_name: erpl-ts-peer
+    hostname: ts-peer
+    networks: [mesh]
+    cap_add: [NET_ADMIN]
+    devices:
+      - /dev/net/tun
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_HOSTNAME: ts-peer
+      TS_USERSPACE: "false"                # kernel TUN -> real tailscale0 interface
+      TS_EXTRA_ARGS: --login-server=http://172.28.0.1:18080 --accept-dns=false
+      TS_STATE_DIR: /var/lib/tailscale
+    volumes:
+      - ts-peer-state:/var/lib/tailscale
+    profiles: [peer]                       # started in phase 2 (after the key is minted)
+
+  # Service co-located in ts-peer's network namespace: reachable at B's mesh IP:8000.
+  ts-peer-svc:
+    image: python:3.12-slim
+    container_name: erpl-ts-peer-svc
+    network_mode: "service:ts-peer"
+    working_dir: /assets
+    command: python -m http.server 8000
+    volumes:
+      - ./assets:/assets:ro
+    depends_on: [ts-peer]
+    profiles: [peer]
+
 volumes:
   headscale-data:
+  ts-peer-state:
