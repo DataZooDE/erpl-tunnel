@@ -1,0 +1,52 @@
+# Minimal Headscale config for hermetic, cloud-free CI (ADR-009). Open-source
+# Tailscale control server; tsnet nodes enroll against it via control_url.
+# server_url is the host-mapped URL (18080 -> container 8080) so the embedded DERP
+# region URL it advertises is reachable from the host-side tsnet node.
+server_url: http://127.0.0.1:18080
+listen_addr: 0.0.0.0:8080
+metrics_listen_addr: 0.0.0.0:9090
+grpc_listen_addr: 0.0.0.0:50443
+grpc_allow_insecure: false
+
+noise:
+  private_key_path: /var/lib/headscale/noise_private.key
+
+prefixes:
+  v4: 100.64.0.0/10
+  v6: fd7a:115c:a1e0::/48
+  allocation: sequential
+
+# Embedded DERP server so Headscale has at least one DERP region without fetching
+# the Tailscale cloud map (CI has no internet to controlplane.tailscale.com).
+derp:
+  server:
+    enabled: true
+    region_id: 999
+    region_code: "headscale"
+    region_name: "Headscale Embedded DERP"
+    stun_listen_addr: "0.0.0.0:3478"
+    private_key_path: /var/lib/headscale/derp_server_private.key
+  urls: []
+  auto_update_enabled: false
+  update_frequency: 24h
+
+disable_check_updates: true
+ephemeral_node_inactivity_timeout: 30m
+
+database:
+  type: sqlite
+  sqlite:
+    path: /var/lib/headscale/db.sqlite
+
+log:
+  level: warn
+
+policy:
+  mode: database
+
+dns:
+  magic_dns: true
+  base_domain: erpl.test
+  nameservers:
+    global:
+      - 1.1.1.1

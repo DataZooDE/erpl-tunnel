@@ -67,3 +67,15 @@ lazy_load_test:
 	DUCKDB_BIN=$(PROJ_DIR)build/debug/duckdb \
 	  test/integration/lazy_mesh_load.sh \
 	  $(PROJ_DIR)build/debug/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+
+# Real Tailscale enrollment against a hermetic Headscale (ADR-009). Needs a
+# tailscale build:  MESH_BACKEND=tailscale make debug mesh_e2e
+.PHONY: mesh_e2e mesh_up mesh_down
+mesh_up:
+	cd test/integration/headscale && docker compose up -d --wait
+mesh_down:
+	cd test/integration/headscale && docker compose down -v
+mesh_e2e:
+	DUCKDB_BIN=$(PROJ_DIR)build/debug/duckdb \
+	  test/integration/mesh_e2e_headscale.sh \
+	  $(PROJ_DIR)build/debug/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension

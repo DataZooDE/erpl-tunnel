@@ -1,0 +1,16 @@
+# Hermetic Tailscale control server for CI (ADR-009). No cloud, no TS_AUTHKEY.
+# The tsnet node inside the extension enrolls here via control_url=http://127.0.0.1:8080.
+services:
+  headscale:
+    image: headscale/headscale:0.26.1
+    container_name: erpl-headscale
+    command: serve
+    ports:
+      - "18080:8080"
+      - "3478:3478/udp"
+    volumes:
+      - ./config.yaml:/etc/headscale/config.yaml:ro
+      - headscale-data:/var/lib/headscale
+
+volumes:
+  headscale-data:
