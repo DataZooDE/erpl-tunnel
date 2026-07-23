@@ -81,6 +81,7 @@ static void RegisterTunnelFunctions(ExtensionLoader &loader) {
     loader.RegisterFunction(CreateTunnelCreatePragma());
     loader.RegisterFunction(CreateTunnelClosePragma());
     loader.RegisterFunction(CreateTunnelCloseAllPragma());
+    loader.RegisterFunction(CreateMeshActivatePragma());
 
     {
         CreateTableFunctionInfo info(CreateTunnelsTableFunction());

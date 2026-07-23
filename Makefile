@@ -79,3 +79,11 @@ mesh_e2e:
 	DUCKDB_BIN=$(PROJ_DIR)build/debug/duckdb \
 	  test/integration/mesh_e2e_headscale.sh \
 	  $(PROJ_DIR)build/debug/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+
+# Single-mesh latch proof (ADR-011). Needs a 'both' build:
+#   MESH_BACKEND=both make debug latch_test
+.PHONY: latch_test
+latch_test:
+	DUCKDB_BIN=$(PROJ_DIR)build/debug/duckdb \
+	  test/integration/single_mesh_latch.sh \
+	  $(PROJ_DIR)build/debug/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension

@@ -79,4 +79,10 @@ private:
 TableFunction CreateTunnelPeersFunction();
 TableFunction CreateTunnelSelfFunction();
 
+// PRAGMA tunnel_mesh_activate('tailscale'|'netbird') — activate a mesh backend's
+// shim (lazy dlopen + single-mesh latch) WITHOUT enrolling. Returns the active
+// mesh kind, or raises the latch/not-in-build error. Primarily for exercising the
+// loader and the single-mesh latch (ADR-011) deterministically.
+struct PragmaFunction CreateMeshActivatePragma();
+
 } // namespace duckdb

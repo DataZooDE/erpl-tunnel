@@ -4,6 +4,7 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/main/secret/secret_manager.hpp"
 #include "duckdb/common/string_util.hpp"
+#include "duckdb/function/pragma_function.hpp"
 
 #include "yyjson.hpp"
 
@@ -294,6 +295,23 @@ TableFunction MakeMeshTableFunction(const char *name, table_function_bind_t bind
 }
 
 } // namespace
+
+string MeshActivate(ClientContext &, const FunctionParameters &parameters) {
+    if (parameters.values.empty()) {
+        throw InvalidInputException("tunnel_mesh_activate('tailscale'|'netbird')");
+    }
+    auto backend = parameters.values[0].ToString();
+    auto kind = ParseMeshKind(backend);
+    if (kind == MeshKind::None) {
+        throw InvalidInputException("tunnel_mesh_activate: backend must be 'tailscale' or 'netbird'.");
+    }
+    MeshLoader::Activate(kind); // lazy dlopen + single-mesh latch (throws actionably)
+    return StringUtil::Format("SELECT '%s' AS active_mesh", MeshKindName(kind));
+}
+
+PragmaFunction CreateMeshActivatePragma() {
+    return PragmaFunction::PragmaCall("tunnel_mesh_activate", MeshActivate, {LogicalType::VARCHAR});
+}
 
 TableFunction CreateTunnelPeersFunction() {
     return MakeMeshTableFunction("tunnel_peers", TunnelPeersBind);
