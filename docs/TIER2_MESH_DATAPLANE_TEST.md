@@ -116,14 +116,47 @@ which normally goes through the IdP-authenticated management API. Findings:
   + relay + dashboard + **Zitadel**), pinned. Real and sanctioned, but ~6 containers
   and a slow Zitadel init; gate as `workflow_dispatch`/nightly.
 
-**Recommendation:** (A) for CI viability; keep (B) documented as the fallback. This
-was NOT taken further in this pass — the Tailscale Tier 2 data plane is the delivered
-flagship; NetBird Tier 2 data plane is the remaining item with the runbook above.
+**Recommendation:** (A) for CI viability; keep (B) documented as the fallback.
 
-**Note:** whichever path, the same **direct-WireGuard-on-one-subnet** trick from the
-Tailscale test applies (put node A's container and the `netbird` peer on one docker
-subnet + set the **relay** URL to a mutually reachable address), so the relay-TLS/
-reachability class of issues is sidestepped the same way.
+### What was actually built and proven (path A)
+
+Path (A) was implemented and largely works:
+
+- `test/integration/netbird/seeder/` — a Go program that runs NetBird's own
+  `store.NewTestStoreFromSQL(store.sql)` to produce a management-ready `store.db`
+  (account + reusable setup key `A2C8E62B-38F5-4553-B31E-DD66C696CEBB`, a network,
+  and a permissive default "All"↔"All" allow-all policy).
+- `test/integration/netbird/docker-compose.yml` — management (`IdpManagerConfig:
+  none`) against the seeded store, + signal + relay + an official `netbird` daemon
+  peer (kernel TUN, real `wt0`) + a shared-netns HTTP service.
+- `management.json`, `nodea_entrypoint.sh`, `mesh_dataplane_netbird.sh` mirroring the
+  Tailscale harness.
+
+**Proven (real, no mocks):**
+- **No-IdP enrollment works.** The official `netbird` daemon enrolls against the
+  seeded-store, Zitadel-less management and gets a real overlay IP
+  (e.g. `100.64.146.73`), Management/Signal Connected. Node B has a real `wt0`; a
+  self-curl to its own overlay IP:8000 returns the payload.
+- **Our extension's `client/embed` node enrolls and forms a WireGuard handshake**
+  with the official peer — exactly like an official peer does (`configure WireGuard
+  endpoint …`, `first wg handshake detected`).
+
+**Remaining gap (NOT our extension):** the NetBird **overlay data path** does not
+carry TCP payloads in this hermetic setup — **and this reproduces between two
+official peers** (peer C → peer B:8000 returns nothing despite "1/1 Connected").
+Root cause is NetBird self-hosted **STUN/relay config**: ICE gathering times out
+(the `management.json` STUN/TURN point at a non-existent server), so peers fall back
+to the relay, and the relay data forwarding isn't carrying traffic in this config.
+Fixing it is NetBird infra tuning — a working STUN/coturn so **direct** ICE forms on
+the shared subnet, or a correctly-wired relay data path — independent of erpl_tunnel.
+The Tailscale Tier 2 data plane (which forms direct WireGuard cleanly) is the
+delivered flagship; NetBird Tier 2's data-payload leg is left here with the exact
+diagnosis above.
+
+**Note:** the same **direct-WireGuard-on-one-subnet** trick as the Tailscale test is
+already applied (node A's container and the `netbird` peer share one docker subnet);
+the blocker is purely NetBird getting ICE/relay to move bytes, which official peers
+also hit here.
 
 **Files**
 - `test/integration/netbird/docker-compose.yml` — management + signal + relay (+ IdP

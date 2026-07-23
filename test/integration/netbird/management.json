@@ -1,0 +1,38 @@
+{
+    "Stuns": [
+        { "Proto": "udp", "URI": "stun:172.28.0.1:3478", "Username": "", "Password": null }
+    ],
+    "TURNConfig": {
+        "Turns": [
+            { "Proto": "udp", "URI": "turn:172.28.0.1:3478", "Username": "netbird", "Password": "netbird" }
+        ],
+        "CredentialsTTL": "12h",
+        "Secret": "netbird",
+        "TimeBasedCredentials": false
+    },
+    "Relay": {
+        "Addresses": ["rel://172.28.0.1:33080"],
+        "CredentialsTTL": "24h",
+        "Secret": "netbirdnetbirdnetbirdnetbird"
+    },
+    "Signal": {
+        "Proto": "http",
+        "URI": "signal:10000",
+        "Username": "",
+        "Password": null
+    },
+    "Datadir": "/var/lib/netbird",
+    "DataStoreEncryptionKey": "",
+    "StoreConfig": { "Engine": "sqlite" },
+    "HttpConfig": {
+        "Address": "0.0.0.0:80",
+        "AuthAudience": "",
+        "AuthIssuer": "",
+        "AuthUserIDClaim": "",
+        "AuthKeysLocation": "",
+        "OIDCConfigEndpoint": ""
+    },
+    "IdpManagerConfig": {
+        "ManagerType": "none"
+    }
+}
