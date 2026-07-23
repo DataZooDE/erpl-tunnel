@@ -87,7 +87,37 @@ int64_t TunnelManager::CreateTunnel(const TunnelAuthParams &auth_params,
     }
 }
 
+int64_t TunnelManager::CreateMeshTunnel(std::shared_ptr<MeshBackend> backend,
+                                        const string &remote_host, int remote_port, int local_port,
+                                        int timeout_seconds, bool bind_all) {
+    int64_t tunnel_id = GenerateTunnelId();
+    auto fwd = std::make_shared<MeshForwarder>(std::move(backend), remote_host, remote_port,
+                                               local_port, bind_all);
+    fwd->Start(timeout_seconds); // throws actionably on failure
+    {
+        std::lock_guard<std::mutex> lock(tunnels_mutex);
+        mesh_tunnels[tunnel_id] = std::move(fwd);
+    }
+    return tunnel_id;
+}
+
 bool TunnelManager::CloseTunnel(int64_t tunnel_id) {
+    {
+        // Mesh tunnel?
+        std::shared_ptr<MeshForwarder> mesh_to_close;
+        {
+            std::lock_guard<std::mutex> lock(tunnels_mutex);
+            auto it = mesh_tunnels.find(tunnel_id);
+            if (it != mesh_tunnels.end()) {
+                mesh_to_close = it->second;
+                mesh_tunnels.erase(it);
+            }
+        }
+        if (mesh_to_close) {
+            mesh_to_close->Close();
+            return true;
+        }
+    }
     std::shared_ptr<TunnelConnection> connection_to_close;
     
     {
@@ -159,7 +189,10 @@ std::vector<std::pair<int64_t, TunnelConnectionAttributes>> TunnelManager::ListT
         // Get the detailed attributes from the tunnel connection
         result.emplace_back(pair.first, pair.second->GetAttributes());
     }
-    
+    for (const auto &pair : mesh_tunnels) {
+        result.emplace_back(pair.first, pair.second->GetAttributes());
+    }
+
     return result;
 }
 
@@ -187,11 +220,15 @@ std::string TunnelManager::GetTunnelError(int64_t tunnel_id) const {
 
 void TunnelManager::CloseAllTunnels() {
     std::lock_guard<std::mutex> lock(tunnels_mutex);
-    
+
     for (auto &pair : active_tunnels) {
         pair.second->Close();
     }
     active_tunnels.clear();
+    for (auto &pair : mesh_tunnels) {
+        pair.second->Close();
+    }
+    mesh_tunnels.clear();
 }
 
 void TunnelManager::CleanupInactiveTunnels() {

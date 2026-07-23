@@ -50,24 +50,35 @@ CREATE SECRET hs (TYPE tunnel, backend 'tailscale', auth_key '$KEY',
     state_dir '$STATE_DIR', ephemeral true);
 .mode list
 SELECT 'SELF=' || mesh_ip || '|' || host_name AS out FROM tunnel_self(secret := 'hs');
+-- Also exercise tunnel_create over the mesh backend: it must bind a loopback
+-- listener and appear in tunnels() (the per-connection Dial happens on real use).
+PRAGMA tunnel_create(secret='hs', remote_host='100.64.0.250', remote_port='8000',
+    local_port='9401', timeout='45');
+SELECT 'TUN=' || remote_host || '|' || local_port || '|' || bind_addr AS out
+    FROM tunnels() WHERE local_port = 9401;
 SELECT 'DONE' AS marker;
 SQL
 
-for _ in $(seq 1 60); do grep -qE "SELF=|Error|DONE" "$OUT" && break; sleep 1; done
+for _ in $(seq 1 90); do grep -qE "DONE|Error" "$OUT" && break; sleep 1; done
 
 self_line="$(grep -oE 'SELF=[^|]*\|[^ ]*' "$OUT" | head -1)"
 mesh_ip="${self_line#SELF=}"; mesh_ip="${mesh_ip%%|*}"
+tun_line="$(grep -oE 'TUN=[^ ]*' "$OUT" | head -1)"
 echo "   tunnel_self -> $self_line"
+echo "   tunnel_create -> $tun_line"
 
 # Verify from the control server's side that the node registered.
 echo "== headscale nodes =="
 hs nodes list 2>/dev/null | grep -i "erpl-node-a" || true
 
-if [[ "$mesh_ip" =~ ^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\. ]]; then
-  echo "PASS: tsnet node enrolled against Headscale, mesh IP $mesh_ip (real control plane)"
-  echo "MESH-E2E OK"
-  exit 0
-fi
-echo "FAIL: node did not receive a 100.64/10 mesh IP"
+ok=0
+[[ "$mesh_ip" =~ ^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\. ]] && \
+  echo "PASS: tsnet node enrolled against Headscale, mesh IP $mesh_ip (real control plane)" || \
+  { echo "FAIL: node did not receive a 100.64/10 mesh IP"; ok=1; }
+[[ "$tun_line" == "TUN=100.64.0.250|9401|127.0.0.1" ]] && \
+  echo "PASS: mesh tunnel_create bound 127.0.0.1:9401 and listed in tunnels()" || \
+  { echo "FAIL: mesh tunnel_create did not bind/list as expected ($tun_line)"; ok=1; }
+
+if [[ $ok -eq 0 ]]; then echo "MESH-E2E OK"; exit 0; fi
 echo "---- duckdb output ----"; cat "$OUT"
 exit 1

@@ -179,8 +179,23 @@ std::vector<MeshPeerRow> ParsePeerArray(const std::string &json) {
     return rows;
 }
 
+} // namespace
+
+MeshKind SecretMeshKind(ClientContext &context, const std::string &secret_name) {
+    if (secret_name.empty()) {
+        return MeshKind::None;
+    }
+    auto match = LookupTunnelSecret(context, secret_name);
+    if (!match.HasMatch()) {
+        return MeshKind::None;
+    }
+    const auto &secret = dynamic_cast<const KeyValueSecret &>(match.GetSecret());
+    auto v = secret.TryGetValue("backend");
+    return v.IsNull() ? MeshKind::None : ParseMeshKind(v.ToString());
+}
+
 // Build a MeshBackend from a tunnel secret (backend != ssh).
-unique_ptr<MeshBackend> MeshBackendFromSecret(ClientContext &context, const std::string &secret_name) {
+std::shared_ptr<MeshBackend> MeshBackendFromSecret(ClientContext &context, const std::string &secret_name) {
     if (secret_name.empty()) {
         throw InvalidInputException(
             "Tunnel: tunnel_peers/tunnel_self require secret := '<name>' naming a mesh "
@@ -214,6 +229,8 @@ unique_ptr<MeshBackend> MeshBackendFromSecret(ClientContext &context, const std:
     opts.ephemeral = (eph == "true" || eph == "1");
     return make_uniq<MeshBackend>(std::move(opts));
 }
+
+namespace {
 
 struct MeshPeersBindData : public FunctionData {
     explicit MeshPeersBindData(std::vector<MeshPeerRow> rows_p) : rows(std::move(rows_p)) {}

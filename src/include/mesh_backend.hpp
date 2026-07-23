@@ -15,6 +15,8 @@
 
 namespace duckdb {
 
+class MeshBackend; // defined below
+
 // Per-backend options parsed from a tunnel secret (backend != 'ssh').
 struct MeshOptions {
     MeshKind kind = MeshKind::None;
@@ -31,6 +33,15 @@ struct MeshOptions {
 
 // Parse a mesh backend string ('tailscale'|'netbird') to a MeshKind, or None.
 MeshKind ParseMeshKind(const std::string &backend);
+
+// The mesh kind declared by a tunnel secret's 'backend' field (None for ssh/absent
+// or a missing secret). Cheap: reads the secret, no activation.
+MeshKind SecretMeshKind(ClientContext &context, const std::string &secret_name);
+
+// Build (but do not activate) a MeshBackend from a mesh tunnel secret. Throws if the
+// secret is missing or not a mesh secret.
+std::shared_ptr<MeshBackend> MeshBackendFromSecret(ClientContext &context,
+                                                   const std::string &secret_name);
 
 class MeshBackend {
 public:

@@ -2,17 +2,15 @@
 #include "duckdb/parser/parsed_data/create_pragma_function_info.hpp"
 #include "tunnel_manager.hpp"
 #include "tunnel_secret.hpp"
+#include "mesh_backend.hpp"
 #include "telemetry.hpp"
 
 namespace duckdb {
 
 string TunnelCreate(ClientContext &context, const FunctionParameters &parameters) {
     PostHogTelemetry::Instance().RecordFunctionCall("tunnel_create");
-    
-    // Get authentication parameters from the secret
-    auto auth_params = GetTunnelAuthParamsFromContext(context, parameters);
-    
-    // Extract tunnel parameters from named parameters
+
+    // Extract tunnel parameters from named parameters.
     string remote_host;
     int remote_port = 0;
     int local_port = 0;
@@ -32,16 +30,26 @@ string TunnelCreate(ClientContext &context, const FunctionParameters &parameters
             bind_all = param.second.GetValue<bool>();
         }
     }
-    
+
     if (remote_host.empty() || remote_port == 0 || local_port == 0) {
         throw InvalidInputException("tunnel_create requires remote_host, remote_port, and local_port parameters");
     }
-    
-    // Create tunnel using the tunnel manager with timeout
-    int64_t tunnel_id = g_tunnel_manager->CreateTunnel(auth_params, remote_host, remote_port, local_port,
-                                                      auth_params.ssh_host, auth_params.ssh_port, auth_params.ssh_user,
-                                                      timeout_seconds, bind_all);
-    
+
+    // Route by the secret's backend (ADR-003 uniform engine). Mesh secrets forward
+    // over the mesh node; ssh/absent secrets use the libssh2 path.
+    auto secret_name = GetTunnelSecretNameFromParams(parameters);
+    int64_t tunnel_id;
+    if (SecretMeshKind(context, secret_name) != MeshKind::None) {
+        auto backend = MeshBackendFromSecret(context, secret_name);
+        tunnel_id = g_tunnel_manager->CreateMeshTunnel(std::move(backend), remote_host, remote_port,
+                                                       local_port, timeout_seconds, bind_all);
+    } else {
+        auto auth_params = GetTunnelAuthParamsFromContext(context, parameters);
+        tunnel_id = g_tunnel_manager->CreateTunnel(auth_params, remote_host, remote_port, local_port,
+                                                   auth_params.ssh_host, auth_params.ssh_port,
+                                                   auth_params.ssh_user, timeout_seconds, bind_all);
+    }
+
     auto pragma_query = StringUtil::Format("SELECT %lld as tunnel_id, 'Tunnel created successfully' as message", tunnel_id);
     return pragma_query;
 }

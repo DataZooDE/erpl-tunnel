@@ -2,6 +2,7 @@
 
 #include "duckdb.hpp"
 #include "tunnel_connection.hpp"
+#include "mesh_forwarder.hpp"
 #include <unordered_map>
 #include <mutex>
 #include <memory>
@@ -26,6 +27,11 @@ public:
                          const string &ssh_user,
                          int timeout_seconds = 60,
                          bool bind_all = false);
+    // Create a tunnel whose transport is a mesh backend (tailscale/netbird). The
+    // backend is dialed per connection; shares the tunnel id space with SSH tunnels.
+    int64_t CreateMeshTunnel(std::shared_ptr<MeshBackend> backend,
+                             const string &remote_host, int remote_port, int local_port,
+                             int timeout_seconds = 60, bool bind_all = false);
     bool CloseTunnel(int64_t tunnel_id);
     bool IsTunnelActive(int64_t tunnel_id) const;
     
@@ -42,6 +48,7 @@ public:
 private:
     mutable std::mutex tunnels_mutex;
     std::unordered_map<int64_t, std::shared_ptr<TunnelConnection>> active_tunnels;
+    std::unordered_map<int64_t, std::shared_ptr<MeshForwarder>> mesh_tunnels;
     int64_t next_tunnel_id;
     
     // Helper methods
