@@ -29,3 +29,23 @@ test_up:
 	cd test/integration && docker compose up -d --wait
 test_down:
 	cd test/integration && docker compose down -v
+
+# Real end-to-end payload test: forward a local port through the docker sshd
+# bastion to the private HTTP service and fetch a real response with curl.
+# Requires `make test_up` first. Uses the debug build by default.
+ERPL_SSH_HOST?=127.0.0.1
+ERPL_SSH_PORT?=2222
+ERPL_SSH_USER?=root
+ERPL_SSH_PASSWORD?=testpass
+export ERPL_SSH_HOST ERPL_SSH_PORT ERPL_SSH_USER ERPL_SSH_PASSWORD
+.PHONY: e2e
+e2e: debug
+	DUCKDB_BIN=$(PROJ_DIR)build/debug/duckdb \
+	  test/integration/e2e_http_over_tunnel.sh \
+	  $(PROJ_DIR)build/debug/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+
+# Run the SSH integration sqllogictests against the debug binary (services must be up).
+.PHONY: integration_tests
+integration_tests: debug
+	@for t in test/sql/sap_tunnel_integration_*.test; do echo "== $$t =="; \
+	  $(UNITTEST) --test-dir . "$$t" || exit 1; done
