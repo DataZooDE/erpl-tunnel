@@ -1,0 +1,67 @@
+#
+# Mesh backend proofs — the tests that need Go + docker (Headscale) and are not
+# part of the release distribution matrix. Runs the de-risking spike, the lazy
+# zero-Go proof, the single-mesh latch, and real Tailscale enrollment.
+#
+name: Mesh backend tests
+on:
+  push:
+    paths:
+      - 'shim/**'
+      - 'src/mesh_*'
+      - 'test/integration/**'
+      - '.github/workflows/mesh-tests.yml'
+  pull_request:
+    paths:
+      - 'shim/**'
+      - 'src/mesh_*'
+  workflow_dispatch:
+
+concurrency:
+  group: mesh-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  spike:
+    name: Go-in-dlopen spike (R1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.26' }
+      - name: Build Tailscale shim + run dlopen spike
+        run: make spike
+
+  mesh-e2e:
+    name: Lazy-load, latch & Headscale enrollment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.26' }
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Set up vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$HOME/vcpkg"
+          "$HOME/vcpkg/bootstrap-vcpkg.sh"
+          echo "VCPKG_ROOT=$HOME/vcpkg" >> "$GITHUB_ENV"
+
+      # Build with BOTH mesh shims so the cross-mesh latch can be exercised.
+      - name: Build (MESH_BACKEND=both)
+        env: { MESH_BACKEND: both, GEN: ninja }
+        run: make debug
+
+      - name: Lazy-dlopen / zero-Go proof
+        run: make lazy_load_test
+
+      - name: Single-mesh latch proof
+        run: make latch_test
+
+      - name: Real Tailscale enrollment via Headscale
+        run: |
+          make mesh_up
+          make mesh_e2e
+          make mesh_down

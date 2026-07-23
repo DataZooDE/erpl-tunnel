@@ -26,8 +26,25 @@ PRAGMA tunnel_create(secret := 'ts',
 
 ## Status
 
-Planning. This repo currently holds the design and the implementation plan; code
-lands per the phased plan below.
+Working across all three backends. SSH is full parity with erpl plus the defect
+fixes; Tailscale enrolls against a real control server and forwards traffic;
+NetBird shares the identical shim ABI behind the single-mesh latch. Test matrix
+(all real services, no mocks):
+
+| Proof | How | State |
+|-------|-----|-------|
+| SSH tunnel forwards real HTTP | docker sshd + private HTTP service | ✅ |
+| erpl defects fixed (loopback bind, thread join, agent-auth, missing-secret, DNS) | sqllogictest + `ss` | ✅ |
+| Go-in-`dlopen` works | `shim/spike_dlopen.c` | ✅ |
+| SSH-only load maps **no Go**; mesh shim `dlopen`'d lazily on first use | `/proc/pid/maps` assertion | ✅ |
+| Real Tailscale enrollment + `tunnel_create` over the tailnet | hermetic **Headscale** | ✅ |
+| NetBird shim, **identical C ABI** | `nm` + spike | ✅ |
+| **Single-mesh latch** (one mesh per process, symmetric) | `both` build, real dlopen | ✅ |
+| NetBird AGPL clearance (R4) | `go list -deps` audit | ✅ |
+| Full NetBird enrollment E2E | self-hosted mgmt/signal/relay stack | ⏳ scaffolded |
+
+See [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) for the phased plan
+and [`docs/NETBIRD_AGPL_AUDIT.md`](docs/NETBIRD_AGPL_AUDIT.md) for R4.
 
 ## Documents
 
@@ -37,6 +54,37 @@ lands per the phased plan below.
   the mesh-shim C ABI, lazy-`dlopen` + single-mesh latch, ADRs).
 - **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)** — phased plan:
   extract & parity → Tailscale + the lazy-load spike → NetBird → polish & release.
+
+## Usage
+
+```sql
+LOAD erpl_tunnel;
+
+-- SSH (parity with erpl, plus loopback-default bind and clean teardown)
+CREATE SECRET s (TYPE ssh_tunnel, ssh_host 'bastion', ssh_user 'jump', password '…');
+PRAGMA tunnel_create(secret='s', remote_host='sap.internal', remote_port='3300',
+                     local_port='9001');            -- → localhost:9001
+
+-- Tailscale (in-process tsnet; control_url empty = Tailscale cloud, or a Headscale URL)
+CREATE SECRET ts (TYPE tunnel, backend 'tailscale', auth_key 'tskey-auth-…',
+                  hostname 'duckdb-eu-1', ephemeral true);
+SELECT * FROM tunnel_self(secret='ts');             -- this node's name / mesh IP
+SELECT * FROM tunnel_peers(secret='ts');            -- peer-local discovery, no API token
+PRAGMA tunnel_create(secret='ts', remote_host='duckdb-eu-shard3', remote_port='4213',
+                     local_port='9000');
+
+-- NetBird (in-process client/embed; management_url empty = NetBird cloud)
+CREATE SECRET nb (TYPE tunnel, backend 'netbird', setup_key '…', hostname 'duckdb-eu-1');
+
+SELECT * FROM tunnels();                             -- active local tunnels
+PRAGMA tunnel_close(1);
+PRAGMA tunnel_close_all;
+```
+
+Local listeners bind `127.0.0.1` by default; pass `bind_all:=true` to opt into all
+interfaces. Build variants: `MESH_BACKEND=ssh|tailscale|netbird|both` — `ssh`
+carries **no Go** at all (smallest); each bundled mesh shim adds ~25–45 MB and is
+`dlopen`'d only when that backend is first used. One mesh is live per process.
 
 ## Design in one breath
 

@@ -87,3 +87,11 @@ latch_test:
 	DUCKDB_BIN=$(PROJ_DIR)build/debug/duckdb \
 	  test/integration/single_mesh_latch.sh \
 	  $(PROJ_DIR)build/debug/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+
+# Zero-dependency proof (NFR-1/M5): the loadable file links only glibc, and loads
+# in a bare, network-isolated container. Needs a RELEASE build: `make release`.
+.PHONY: zero_dep
+zero_dep:
+	DUCKDB_BIN=$(shell command -v duckdb) \
+	  test/integration/zero_dependency.sh \
+	  $(PROJ_DIR)build/release/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
