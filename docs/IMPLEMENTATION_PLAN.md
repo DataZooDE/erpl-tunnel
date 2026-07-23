@@ -13,6 +13,39 @@
 
 ---
 
+## Delivery status (2026-07-23)
+
+Implemented and verified against **real services, no mocks**:
+
+- **Phase 0/0b** ✅ — standalone extension builds; SSH parity green (docker sshd +
+  private HTTP service); real HTTP payload forwarded through the tunnel.
+- **Phase 1 (M1)** ✅ — erpl defects fixed red/green: loopback-default bind (proven
+  via `ss`), tracked-and-joined per-connection workers (deterministic teardown),
+  agent-auth actionable failure, missing-secret hard error, `getaddrinfo` resolution.
+- **Phase 2 (M2)** ✅ — `ts_shim` (tsnet) c-shared; the Go-in-`dlopen` spike; lazy
+  activation proven zero-Go-at-load (`/proc/pid/maps`); real Tailscale enrollment +
+  `tunnel_create` over the tailnet against hermetic **Headscale**; unified secret;
+  `tunnel_peers`/`tunnel_self`.
+- **Phase 3 (M3)** ✅ (core) — `nb_shim` (client/embed) with the **identical C ABI**;
+  **single-mesh latch proven symmetrically** with both real shims embedded; R4 AGPL
+  audit cleared (`docs/NETBIRD_AGPL_AUDIT.md`).
+- **Phase 4 (M4)** ✅ (core) — **zero-dependency verified** (glibc-only `ldd` + bare
+  `--network none` container load); footprint docs; mesh CI workflow; README.
+
+Remaining / not yet done in this pass:
+
+- **NetBird live enrollment E2E** — the self-hosted management/signal/relay + IdP
+  stack is heavy and flaky to stand up; ABI + latch + AGPL are proven, live
+  enrollment is scaffolded (`shim/nb`) but not run against a real NetBird control
+  plane. (M3 exit's NetBird-enroll leg.)
+- **Two-node quack data-plane over the tailnet** — `tunnel_create` over mesh is
+  proven to bind/list; a full A-serves-quack / B-queries-through-tunnel run is not
+  yet automated.
+- **macOS build + `.dylib` signing (R7)** and **Windows (NG5/R6)** — Linux only here.
+- **R2 (license/distribution)** — still the owner decision that gates public release.
+
+---
+
 ## 0. Orientation — what we are reusing vs. building
 
 **Extract & keep (from `erpl/tunnel/src/`):** `tunnel_extension.cpp`,
