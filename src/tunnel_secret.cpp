@@ -5,40 +5,58 @@
 
 namespace duckdb {
 
+SecretMatch LookupTunnelSecret(ClientContext &context, const std::string &secret_name) {
+    auto &secret_manager = SecretManager::Get(context);
+    auto transaction = CatalogTransaction::GetSystemCatalogTransaction(context);
+    // Try the unified 'tunnel' type first, then the 'ssh_tunnel' alias.
+    auto match = secret_manager.LookupSecret(transaction, secret_name, TUNNEL_SECRET_TYPE_ALIAS);
+    if (match.HasMatch()) {
+        return match;
+    }
+    return secret_manager.LookupSecret(transaction, secret_name, TUNNEL_SECRET_TYPE_NAME);
+}
+
 unique_ptr<BaseSecret> CreateTunnelSecretFunction(ClientContext &context, CreateSecretInput &input) {
-    // Create a new tunnel secret
+    // Create a new tunnel secret carrying the type the user wrote (tunnel|ssh_tunnel).
     vector<string> prefix_paths;
-    auto result = make_uniq<KeyValueSecret>(prefix_paths, TUNNEL_SECRET_TYPE_NAME, TUNNEL_SECRET_PROVIDER, input.name);
+    auto result = make_uniq<KeyValueSecret>(prefix_paths, input.type, TUNNEL_SECRET_PROVIDER, input.name);
     
-    // Process named parameters
+    // Recognised keys across all backends. Unknown keys are rejected. The 'backend'
+    // discriminator selects ssh (default) | tailscale | netbird (ADR-005). The
+    // ssh_tunnel secret type is retained as a backward-compatible alias.
+    static const std::vector<std::string> kKnownKeys = {
+        // discriminator
+        "backend",
+        // ssh
+        "ssh_host", "ssh_port", "ssh_user", "password", "private_key_path",
+        "passphrase", "auth_method",
+        // mesh (tailscale / netbird)
+        "auth_key", "setup_key", "hostname", "tags", "groups", "control_url",
+        "management_url", "state_dir", "ephemeral"};
+
     for (const auto &named_param : input.options) {
         auto lower_name = StringUtil::Lower(named_param.first);
-        
-        if (lower_name == "ssh_host") {
-            result->secret_map["ssh_host"] = named_param.second.ToString();
-        } else if (lower_name == "ssh_port") {
-            result->secret_map["ssh_port"] = named_param.second.ToString();
-        } else if (lower_name == "ssh_user") {
-            result->secret_map["ssh_user"] = named_param.second.ToString();
-        } else if (lower_name == "password") {
-            result->secret_map["password"] = named_param.second.ToString();
-        } else if (lower_name == "private_key_path") {
-            result->secret_map["private_key_path"] = named_param.second.ToString();
-        } else if (lower_name == "passphrase") {
-            result->secret_map["passphrase"] = named_param.second.ToString();
-        } else if (lower_name == "auth_method") {
-            result->secret_map["auth_method"] = named_param.second.ToString();
-        } else {
-            throw InternalException("Unknown named parameter passed to CreateTunnelSecretFunction: " + lower_name);
+        bool known = false;
+        for (const auto &k : kKnownKeys) {
+            if (lower_name == k) {
+                known = true;
+                break;
+            }
         }
+        if (!known) {
+            throw InvalidInputException("Unknown named parameter for tunnel secret: " + lower_name);
+        }
+        result->secret_map[lower_name] = named_param.second.ToString();
     }
-    
-    // Set redact keys for sensitive information
-    result->redact_keys = {"password", "passphrase", "private_key_path"};
+
+    // Redact every sensitive field across backends (FR-22).
+    result->redact_keys = {"password", "passphrase", "private_key_path", "auth_key", "setup_key"};
     return std::move(result);
 }
 
 void SetTunnelSecretParameters(CreateSecretFunction &function) {
+    function.named_parameters["backend"] = LogicalType::VARCHAR;
+    // ssh
     function.named_parameters["ssh_host"] = LogicalType::VARCHAR;
     function.named_parameters["ssh_port"] = LogicalType::INTEGER;
     function.named_parameters["ssh_user"] = LogicalType::VARCHAR;
@@ -46,21 +64,32 @@ void SetTunnelSecretParameters(CreateSecretFunction &function) {
     function.named_parameters["private_key_path"] = LogicalType::VARCHAR;
     function.named_parameters["passphrase"] = LogicalType::VARCHAR;
     function.named_parameters["auth_method"] = LogicalType::VARCHAR;
+    // mesh (tailscale / netbird)
+    function.named_parameters["auth_key"] = LogicalType::VARCHAR;
+    function.named_parameters["setup_key"] = LogicalType::VARCHAR;
+    function.named_parameters["hostname"] = LogicalType::VARCHAR;
+    function.named_parameters["tags"] = LogicalType::VARCHAR;
+    function.named_parameters["groups"] = LogicalType::VARCHAR;
+    function.named_parameters["control_url"] = LogicalType::VARCHAR;
+    function.named_parameters["management_url"] = LogicalType::VARCHAR;
+    function.named_parameters["state_dir"] = LogicalType::VARCHAR;
+    function.named_parameters["ephemeral"] = LogicalType::BOOLEAN;
 }
 
 void RegisterTunnelSecretType(ExtensionLoader &loader) {
-    // Register the tunnel secret type
-    duckdb::SecretType tunnel_secret_type;
-    tunnel_secret_type.name = TUNNEL_SECRET_TYPE_NAME;
-    tunnel_secret_type.deserializer = KeyValueSecret::Deserialize<KeyValueSecret>;
-    tunnel_secret_type.default_provider = TUNNEL_SECRET_PROVIDER;
-    
-    loader.RegisterSecretType(tunnel_secret_type);
-    
-    // Register the create secret function
-    CreateSecretFunction tunnel_secret_function = {TUNNEL_SECRET_TYPE_NAME, TUNNEL_SECRET_PROVIDER, CreateTunnelSecretFunction};
-    SetTunnelSecretParameters(tunnel_secret_function);
-    loader.RegisterFunction(tunnel_secret_function);
+    // Register the unified tunnel secret type plus the ssh_tunnel alias (ADR-005).
+    for (const char *type_name : {TUNNEL_SECRET_TYPE_NAME, TUNNEL_SECRET_TYPE_ALIAS}) {
+        duckdb::SecretType tunnel_secret_type;
+        tunnel_secret_type.name = type_name;
+        tunnel_secret_type.deserializer = KeyValueSecret::Deserialize<KeyValueSecret>;
+        tunnel_secret_type.default_provider = TUNNEL_SECRET_PROVIDER;
+        loader.RegisterSecretType(tunnel_secret_type);
+
+        CreateSecretFunction tunnel_secret_function = {type_name, TUNNEL_SECRET_PROVIDER,
+                                                       CreateTunnelSecretFunction};
+        SetTunnelSecretParameters(tunnel_secret_function);
+        loader.RegisterFunction(tunnel_secret_function);
+    }
 }
 
 TunnelAuthParams ConvertTunnelSecretToAuthParams(const KeyValueSecret &duck_secret) {

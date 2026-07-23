@@ -49,3 +49,21 @@ e2e: debug
 integration_tests: debug
 	@for t in test/sql/sap_tunnel_integration_*.test; do echo "== $$t =="; \
 	  $(UNITTEST) --test-dir . "$$t" || exit 1; done
+
+# --- Mesh backend spikes / proofs (need MESH_BACKEND != ssh) ----------------
+# Standalone dlopen spike (BRD R1): build the Tailscale shim and prove a Go
+# c-shared library loads and executes via dlopen. No DuckDB, no network.
+.PHONY: spike
+spike:
+	cd shim/ts && CGO_ENABLED=1 GOFLAGS=-mod=mod GOTOOLCHAIN=local \
+	  go build -buildmode=c-shared -o ts_shim.so .
+	cc -o shim/spike_dlopen shim/spike_dlopen.c -ldl
+	shim/spike_dlopen shim/ts/ts_shim.so
+
+# Lazy-dlopen + zero-Go proof against the built extension (HLD §6.5/§8.8).
+# Requires a mesh build, e.g.:  MESH_BACKEND=tailscale make debug lazy_load_test
+.PHONY: lazy_load_test
+lazy_load_test:
+	DUCKDB_BIN=$(PROJ_DIR)build/debug/duckdb \
+	  test/integration/lazy_mesh_load.sh \
+	  $(PROJ_DIR)build/debug/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension

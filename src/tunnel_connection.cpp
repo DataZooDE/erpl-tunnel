@@ -327,15 +327,12 @@ std::string TunnelConnection::GetErrorMessage() const noexcept {
 TunnelAuthParams TunnelAuthParams::FromContext(ClientContext& context, const std::string& secret_name) {
     TunnelAuthParams auth_params;
     
-    // Try to get the secret from the context
-    auto& secret_manager = SecretManager::Get(context);
-    auto transaction = CatalogTransaction::GetSystemCatalogTransaction(context);
-    
-    // Lookup the secret. A missing secret is a HARD, actionable error — never the
+    // Lookup the secret under either registered type ('tunnel' | 'ssh_tunnel').
+    // A missing secret is a HARD, actionable error — never the
     // silent localhost/agent default erpl used (BRD §8.2, NFR-3). Defaulting to an
     // anonymous localhost node hides the real mistake and produces confusing
     // downstream failures ("SSH user cannot be empty").
-    auto secret_match = secret_manager.LookupSecret(transaction, secret_name, TUNNEL_SECRET_TYPE_NAME);
+    auto secret_match = LookupTunnelSecret(context, secret_name);
     if (!secret_match.HasMatch()) {
         if (secret_name.empty() || secret_name == "*") {
             throw InvalidInputException(

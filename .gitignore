@@ -35,3 +35,8 @@ test/python/__pycache__/
 
 # Generated IDoc corpus (perf/compat fixtures; regenerate via scripts/gen_idoc_corpus.sh)
 corpus/
+
+# Go mesh shim build artifacts (rebuilt by CMake from shim/*/*.go)
+shim/*/*_shim.so
+shim/*/*_shim.h
+shim/spike_dlopen

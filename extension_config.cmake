@@ -9,6 +9,12 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-gnu-unique")
 endif()
 
+# Mesh backend bundle selection (ADR-012). Default 'ssh' (zero Go, the
+# zero-dependency baseline). Override with e.g. `MESH_BACKEND=tailscale make debug`.
+if(DEFINED ENV{MESH_BACKEND})
+    set(MESH_BACKEND "$ENV{MESH_BACKEND}" CACHE STRING "mesh backends to bundle" FORCE)
+endif()
+
 # Extension from this repo
 duckdb_extension_load(erpl_tunnel
     SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}

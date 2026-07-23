@@ -10,6 +10,7 @@
 #include "pragma_tunnel_close.hpp"
 #include "pragma_tunnel_close_all.hpp"
 #include "scanner_tunnels.hpp"
+#include "mesh_backend.hpp"
 #include "telemetry.hpp"
 
 // Needed for OPENSSL_init_ssl / OPENSSL_INIT_NO_ATEXIT
@@ -87,6 +88,27 @@ static void RegisterTunnelFunctions(ExtensionLoader &loader) {
         desc.description = "List all active SSH tunnels with their connection details and status.";
         desc.examples    = {"SELECT * FROM tunnels()"};
         desc.categories  = {"tunnel", "ssh"};
+        info.descriptions.push_back(std::move(desc));
+        loader.RegisterFunction(std::move(info));
+    }
+
+    // Mesh discovery (Tailscale/NetBird): peer-local enumeration, no control-plane
+    // token. These trigger the lazy mesh-shim dlopen on first use for a given secret.
+    {
+        CreateTableFunctionInfo info(CreateTunnelPeersFunction());
+        FunctionDescription desc;
+        desc.description = "Enumerate mesh peers for a tunnel secret (peer-local, no API token).";
+        desc.examples    = {"SELECT * FROM tunnel_peers(secret := 'ts')"};
+        desc.categories  = {"tunnel", "mesh"};
+        info.descriptions.push_back(std::move(desc));
+        loader.RegisterFunction(std::move(info));
+    }
+    {
+        CreateTableFunctionInfo info(CreateTunnelSelfFunction());
+        FunctionDescription desc;
+        desc.description = "Show this node's own mesh identity (name/ip/tags) for a tunnel secret.";
+        desc.examples    = {"SELECT * FROM tunnel_self(secret := 'ts')"};
+        desc.categories  = {"tunnel", "mesh"};
         info.descriptions.push_back(std::move(desc));
         loader.RegisterFunction(std::move(info));
     }
