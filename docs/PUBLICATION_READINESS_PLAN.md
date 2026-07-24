@@ -1,15 +1,34 @@
 # Publication-readiness plan — closing the gaps to ship `erpl_tunnel`
 
-> Goal: make `erpl_tunnel` **publishable on the DuckDB community-extensions
-> registry** (SSH-only core) and **self-hosted** (mesh variants), close every gap
-> from the original BRD/HLD plan, harden tests, and rewrite the docs to guide a new
-> user — with Codex code/doc review rounds baked in.
+> Goal: make `erpl_tunnel` (one `both` artifact, all backends) **publishable on the
+> DuckDB community-extensions registry** under BSL/CalVer, close every gap from the
+> original BRD/HLD plan, harden tests, and rewrite the docs to guide a new user —
+> with Codex code/doc review rounds baked in.
 
 | | |
 |---|---|
-| **Status** | Plan for review |
+| **Status** | In progress |
 | **Date** | 2026-07-24 |
 | **Companions** | [`BRD.md`](BRD.md), [`HLD.md`](HLD.md), [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md), [`TIER2_MESH_DATAPLANE_TEST.md`](TIER2_MESH_DATAPLANE_TEST.md) |
+
+## Progress (2026-07-24)
+
+- **A1 license/version** ✅ — BSL 1.1, CalVer single-sourced.
+- **A2 Go-conditional + bootstrap** ✅ — ssh-only needs no Go; mesh bootstraps a
+  pinned, checksum-verified **go1.26.4** (Codex round #1 caught that tailscale needs
+  1.26.4, not 1.25.5; CI confirmed the old pin failed). Verified: go1.26.4 builds both
+  shims.
+- **A3/A4 community both-build + descriptor** ✅ — `extension_config.cmake` defaults
+  `both`; `description.yml` declares `requires_toolchains: go` + excludes wasm/windows/
+  musl; `MainDistributionPipeline` uses `extra_toolchains: go` (validating on the real
+  ci-tools flow).
+- **B1 telemetry parity** ✅ — mesh functions instrumented, backend enum, `TELEMETRY.md`.
+- **C1/C2 tests** ✅ — pure Catch2 parser tests (`make core_tests`, 39 assertions) +
+  secret-redaction sqllogictest; core-tests in CI.
+- **Codex review round #1** ✅ — findings applied (Go pin, SHA-256 pin, GOROOT,
+  DEPENDS, NUL-safe parsing, bounded alloc).
+- **Remaining:** B3 error taxonomy, B4 log verbosity, C4 quack/RFC payloads, **D docs
+  rewrite**, E1 macOS `.dylib` signing, Codex rounds #2–#4, and the community PR.
 
 ## The publication strategy (decided)
 
