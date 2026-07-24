@@ -30,14 +30,21 @@ test_up:
 test_down:
 	cd test/integration && docker compose down -v
 
+# SSH bastion connection details for the live integration tests (real docker
+# sshd, no mocks). These are scoped to the integration targets ONLY — they are
+# deliberately NOT exported globally, so the standard `make test`/`test_release`
+# (which the community-extensions CI runs, with no sshd) leaves ERPL_SSH_HOST
+# unset and the live-SSH sqllogictests self-skip via `require-env`. Bringing the
+# harness up (`make test_up`) and running `make e2e` / `make integration_tests`
+# is what exercises them. Override any of these on the command line as needed.
+e2e integration_tests: export ERPL_SSH_HOST ?= 127.0.0.1
+e2e integration_tests: export ERPL_SSH_PORT ?= 2222
+e2e integration_tests: export ERPL_SSH_USER ?= root
+e2e integration_tests: export ERPL_SSH_PASSWORD ?= testpass
+
 # Real end-to-end payload test: forward a local port through the docker sshd
 # bastion to the private HTTP service and fetch a real response with curl.
 # Requires `make test_up` first. Uses the debug build by default.
-ERPL_SSH_HOST?=127.0.0.1
-ERPL_SSH_PORT?=2222
-ERPL_SSH_USER?=root
-ERPL_SSH_PASSWORD?=testpass
-export ERPL_SSH_HOST ERPL_SSH_PORT ERPL_SSH_USER ERPL_SSH_PASSWORD
 .PHONY: e2e
 e2e: debug
 	DUCKDB_BIN=$(PROJ_DIR)build/debug/duckdb \
