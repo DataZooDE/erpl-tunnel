@@ -50,6 +50,11 @@ namespace duckdb {
 // Global tunnel manager instance
 std::unique_ptr<TunnelManager> g_tunnel_manager;
 
+// CalVer version, matching the erpl / erpl-web scheme: git tags are vYYYY.MM.DD
+// (with an optional .N for same-day re-releases) and the same YYYY.MM.DD string is
+// stamped on telemetry (SetProduct + CaptureExtensionLoad). Bump on release.
+static constexpr const char *ERPL_TUNNEL_VERSION = "2026.07.24";
+
 static void OnTelemetryEnabled(ClientContext &context, SetScope scope, Value &parameter)
 {
     PostHogTelemetry::Instance().SetEnabled(parameter.GetValue<bool>());
@@ -141,9 +146,9 @@ static void LoadInternal(ExtensionLoader &loader)
     // Anonymous, opt-out telemetry (SET erpl_telemetry_enabled=false to disable).
     // Standalone: use the shared posthog-telemetry library directly (no erpl_rfc
     // coupling / ../rfc/src/include), matching the erpl_idoc standalone pattern.
-    PostHogTelemetry::Instance().SetProduct("erpl_tunnel", "2026.07.23", "oss");
+    PostHogTelemetry::Instance().SetProduct("erpl_tunnel", ERPL_TUNNEL_VERSION, "oss");
     PostHogTelemetry::Instance().AssociateGroup("deployment", PostHogTelemetry::GetDistinctId());
-    PostHogTelemetry::Instance().CaptureExtensionLoad("erpl_tunnel", "0.1.0");
+    PostHogTelemetry::Instance().CaptureExtensionLoad("erpl_tunnel", ERPL_TUNNEL_VERSION);
 
     RegisterConfiguration(loader);
     RegisterTunnelFunctions(loader);

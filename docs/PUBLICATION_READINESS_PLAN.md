@@ -11,37 +11,48 @@
 | **Date** | 2026-07-24 |
 | **Companions** | [`BRD.md`](BRD.md), [`HLD.md`](HLD.md), [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md), [`TIER2_MESH_DATAPLANE_TEST.md`](TIER2_MESH_DATAPLANE_TEST.md) |
 
-## The publication strategy (the key decision)
+## The publication strategy (decided)
 
-The DuckDB **community-extensions** registry builds every extension from source on
-its **own standardized CI**, which has **no Go toolchain** and no hook to run custom
-build steps (`extra_extension_config` is not passed through — confirmed from the
-`erpl_idoc` submission, PR duckdb/community-extensions#2203). Consequences:
+**License: BSL 1.1** (decided — matches the whole erpl family; → MPL-2.0 after the
+change date). **Versioning: CalVer**, same as erpl / erpl-web — git tags
+`vYYYY.MM.DD` (optional `.N` for same-day re-releases) and the identical `YYYY.MM.DD`
+string stamped on telemetry (`SetProduct` + `CaptureExtensionLoad`). *(Applied
+2026-07-24: single `ERPL_TUNNEL_VERSION` constant + `description.yml version`.)*
 
-- **Only the SSH-only (`MESH_BACKEND=ssh`, no Go) build can be a community
-  extension.** It builds with vcpkg + CMake exactly like `erpl_idoc`.
-- **The mesh variants (`tailscale`/`netbird`/`both`) must be self-hosted** — they
-  require `go build -buildmode=c-shared` at build time, which the registry CI cannot
-  run. This is BRD **R2 option (c): OSI core in the community registry, mesh add-ons
-  self-hosted** — and it matches how the whole erpl family already distributes (a
-  signed repo + `SET custom_extension_repository`).
+Two things shape distribution:
 
-So "publishable" splits into two deliverables:
-1. **Community**: `erpl_tunnel` SSH-only, OSI-licensed, on duckdb/community-extensions.
-2. **Self-hosted**: `erpl_tunnel` ssh/tailscale/netbird/both on the erpl channel
-   (signed repo), for the mesh features.
+1. The DuckDB **community-extensions** registry builds from source on its **own CI**,
+   which has **no Go toolchain** and no custom-build-step hook (`extra_extension_config`
+   is not passed through — confirmed from the `erpl_idoc` PR
+   duckdb/community-extensions#2203). So the mesh variants can *never* build there; at
+   most the **SSH-only (`MESH_BACKEND=ssh`, no Go)** core could.
+2. **BSL 1.1 is not OSI-approved.** The registry nominally wants an OSI license — but
+   `erpl_idoc` submitted **BSL-1.1** and its PR is "mergeable, pending a maintainer",
+   so BSL *may* pass in practice. Treat the community listing as **best-effort**, not
+   the primary channel.
+
+**Primary distribution = self-hosted** (BSL, the erpl `get.erpl.io` signed-repo model
+already wired in `MainDistributionPipeline.yml` + `_extension_deploy.yml`), carrying
+**all** variants (ssh/tailscale/netbird/both). This is BRD **R2 option (a/c)**.
+
+So the deliverables are:
+1. **Self-hosted (primary)**: `erpl_tunnel` ssh + mesh on the erpl channel, BSL,
+   CalVer — `SET custom_extension_repository` + `INSTALL erpl_tunnel`.
+2. **Community (best-effort)**: `erpl_tunnel` SSH-only submitted to
+   duckdb/community-extensions with the BSL descriptor (like `erpl_idoc`); accept it
+   may be declined on license grounds, in which case self-hosted stands alone.
 
 ---
 
 ## Phase A — Publishability blockers (gate to the community registry)
 
-- **A1 · License decision (R2) — OWNER DECISION, blocks everything.** Community
-  requires an OSI-approved license; **BSL 1.1 is not OSI**. Options: (a) relicense to
-  **MPL-2.0** (BSL's own change-license) so the community core qualifies; (b) keep BSL
-  and self-host only. **Recommended: MPL-2.0 for the community core**, self-host mesh
-  under the same license. Update `LICENSE`, `description.yml`, and all headers.
-  *(Note: `erpl_idoc` submitted BSL-1.1 and its PR is "mergeable" pending a maintainer
-  — verify the registry's current license gate before assuming BSL is rejected.)*
+- **A1 · License = BSL 1.1 (DECIDED).** Keep `LICENSE` (BSL 1.1, → MPL-2.0 after the
+  change date), matching the erpl family; `description.yml` `license: BSL-1.1`; BSL
+  headers on new source files. No relicense. The only open bit is *whether the
+  community registry accepts BSL* — a best-effort attempt (A4), not a blocker, since
+  self-hosted is the primary channel. **Versioning = CalVer (DONE):** single
+  `ERPL_TUNNEL_VERSION` constant used by both telemetry calls; `description.yml
+  version: 2026.07.24`; releases tagged `vYYYY.MM.DD`.
 - **A2 · Make Go optional for the SSH-only build (concrete bug).**
   `CMakeLists.txt` calls `find_program(GO_EXECUTABLE go REQUIRED)` unconditionally, so
   `MESH_BACKEND=ssh` fails to configure without Go — which breaks the community CI.
@@ -171,8 +182,8 @@ the diff + context, apply verified findings, re-verify.
 
 ## Sequencing & the release
 
-1. **A1 (license) is the gate** — owner decision first; nothing ships to the registry
-   without it.
+1. **A1 (license) is settled — BSL 1.1, CalVer.** No gate here anymore; self-hosted
+   is the primary channel, the community PR is best-effort.
 2. **A2–A3** (Go-optional + community-toolchain build) in parallel with **B1–B2**
    (telemetry + backend column — cheap, high value).
 3. **B3–B5** (taxonomy, logging, robustness) with **C1–C3** (unit + redaction tests),
@@ -187,10 +198,12 @@ the diff + context, apply verified findings, re-verify.
 
 ## Definition of done (publishable)
 
-- [ ] License OSI-resolved (A1); headers + `LICENSE` + `description.yml` consistent.
+- [ ] License = BSL 1.1 consistent across `LICENSE` + `description.yml` + headers;
+      CalVer version single-sourced (DONE).
 - [ ] SSH-only core builds green on the community toolchain **with no Go**; all
       sqllogictests + core_tests pass.
-- [ ] Mesh variants self-hosted + install-documented; both data-plane E2Es green in CI.
+- [ ] Mesh variants self-hosted (primary) + install-documented; both data-plane E2Es
+      green in CI. Community SSH-only PR opened best-effort (BSL).
 - [ ] Telemetry parity + `TELEMETRY.md`; `tunnels().backend`; error taxonomy; log
       setting.
 - [ ] Unit tests incl. redaction; quack/RFC payloads (or documented deferral).
