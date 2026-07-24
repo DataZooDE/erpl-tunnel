@@ -83,13 +83,17 @@ function(add_mesh_shim MESH_ID SHIM_DIR SYM DEFINE)
     set(BLOB_C "${CMAKE_CURRENT_BINARY_DIR}/${MESH_ID}_shim_blob.c")
     file(GLOB SHIM_GO_SRC "${CMAKE_CURRENT_SOURCE_DIR}/${SHIM_DIR}/*.go")
     # GOTOOLCHAIN=local: use exactly the bootstrapped Go (already >= the shims' go.mod
-    # requirement), never fetch — deterministic and offline-friendly in CI.
+    # requirement), never fetch — deterministic and offline-friendly in CI. GOROOT is
+    # pinned so a stale environment GOROOT can't mis-root the toolchain.
     add_custom_command(
         OUTPUT ${SHIM_SO}
         COMMAND ${CMAKE_COMMAND} -E env CGO_ENABLED=1 GOFLAGS=-mod=mod GOTOOLCHAIN=local
+                "GOROOT=${GO_ROOT}"
                 ${GO_EXECUTABLE} build -buildmode=c-shared -o ${SHIM_SO} .
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${SHIM_DIR}
         DEPENDS ${SHIM_GO_SRC}
+                ${CMAKE_CURRENT_SOURCE_DIR}/${SHIM_DIR}/go.mod
+                ${CMAKE_CURRENT_SOURCE_DIR}/${SHIM_DIR}/go.sum
         COMMENT "Building ${MESH_ID} Go c-shared shim"
         VERBATIM)
     add_custom_command(

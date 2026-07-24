@@ -7,9 +7,14 @@ using namespace duckdb_yyjson; // NOLINT
 namespace duckdb {
 
 namespace {
+// Length-aware: preserve the full string even if it contains an embedded NUL
+// (untrusted input from the Go shim; std::string(const char*) would truncate).
 std::string JsonStr(yyjson_val *obj, const char *key) {
     yyjson_val *v = yyjson_obj_get(obj, key);
-    return (v && yyjson_is_str(v)) ? std::string(yyjson_get_str(v)) : std::string();
+    if (v && yyjson_is_str(v)) {
+        return std::string(yyjson_get_str(v), yyjson_get_len(v));
+    }
+    return std::string();
 }
 } // namespace
 
@@ -43,7 +48,7 @@ std::vector<MeshPeer> ParseMeshPeersJson(const std::string &json) {
                 yyjson_val *tv;
                 yyjson_arr_foreach(tags, ti, tmax, tv) {
                     if (yyjson_is_str(tv)) {
-                        r.tags.emplace_back(yyjson_get_str(tv));
+                        r.tags.emplace_back(yyjson_get_str(tv), yyjson_get_len(tv));
                     }
                 }
             }

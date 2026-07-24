@@ -94,6 +94,11 @@ int MeshBackend::Dial(const std::string &host, int port) {
     return fd;
 }
 
+// Cap the buffer the shim can ask us to allocate. `need` crosses the C ABI from the
+// Go shim; a bug there must not drive unbounded allocation. 64 MB is far beyond any
+// realistic peer-status payload (thousands of peers).
+static constexpr size_t kMaxMeshJson = 64u * 1024u * 1024u;
+
 std::string MeshBackend::PeersJson() {
     EnsureUp();
     std::lock_guard<std::mutex> lock(mu_);
@@ -102,6 +107,9 @@ std::string MeshBackend::PeersJson() {
     std::vector<char> buf(8192);
     int rc = api_->peers_json(node_, buf.data(), buf.size(), &need);
     if (rc == 2 && need > buf.size()) {
+        if (need > kMaxMeshJson) {
+            throw IOException("Tunnel: mesh peer status is implausibly large; aborting.");
+        }
         buf.resize(need);
         rc = api_->peers_json(node_, buf.data(), buf.size(), &need);
     }
@@ -118,6 +126,9 @@ std::string MeshBackend::SelfJson() {
     std::vector<char> buf(4096);
     int rc = api_->self_json(node_, buf.data(), buf.size(), &need);
     if (rc == 2 && need > buf.size()) {
+        if (need > kMaxMeshJson) {
+            throw IOException("Tunnel: mesh self status is implausibly large; aborting.");
+        }
         buf.resize(need);
         rc = api_->self_json(node_, buf.data(), buf.size(), &need);
     }
