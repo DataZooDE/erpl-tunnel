@@ -34,6 +34,7 @@ jobs:
       extension_name: erpl_tunnel
       vcpkg_commit: 84bab45d415d22042bd0b9081aea57f362da3f35
       extra_toolchains: 'go'   # published artifact is MESH_BACKEND=both (tsnet/netbird shims)
+      reduced_ci_mode: false   # build the FULL matrix (linux+osx+windows+musl), not just linux
       exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;'
       extra_extension_config: |
         if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -62,6 +63,7 @@ jobs:
       extension_name: erpl_tunnel
       vcpkg_commit: ce613c41372b23b1f51333815feb3edd87ef8a8b
       extra_toolchains: 'go'   # published artifact is MESH_BACKEND=both (tsnet/netbird shims)
+      reduced_ci_mode: false   # build the FULL matrix (linux+osx+windows+musl), not just linux
       exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;'
       extra_extension_config: |
         if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
