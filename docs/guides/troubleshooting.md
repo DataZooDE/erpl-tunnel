@@ -4,7 +4,7 @@ Real problems you may hit, with the fix. Grouped by symptom.
 
 ## SSH
 
-**`Tunnel: secret 'X' not found`** — you passed `secret := 'X'` but never created it,
+**`Tunnel: secret 'X' not found`** — you passed `secret = 'X'` but never created it,
 or created it under a different name. Create it first:
 `CREATE SECRET X (TYPE ssh_tunnel, ssh_host '…', ssh_user '…', password '…')`. The
 extension never silently falls back to an anonymous localhost node.
@@ -13,7 +13,7 @@ extension never silently falls back to an anonymous localhost node.
 `private_key_path`) or `'password'` on the secret. SSH-agent auth is not implemented.
 
 **`local port N is already in use`** — pick a free `local_port`. The listener binds
-`127.0.0.1` by default; pass `bind_all := true` to `tunnel_create` only if you really
+`127.0.0.1` by default; pass `bind_all = true` to `tunnel_create` only if you really
 need all interfaces.
 
 ## Tailscale
