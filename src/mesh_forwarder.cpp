@@ -15,6 +15,9 @@ namespace duckdb {
 MeshForwarder::MeshForwarder(std::shared_ptr<MeshBackend> backend, std::string remote_host,
                              int remote_port, int local_port, bool bind_all)
     : backend_(std::move(backend)) {
+    attrs_.backend = (backend_->Kind() == MeshKind::Tailscale) ? "tailscale"
+                     : (backend_->Kind() == MeshKind::NetBird)  ? "netbird"
+                                                                : "mesh";
     attrs_.remote_host = std::move(remote_host);
     attrs_.remote_port = remote_port;
     attrs_.local_port = local_port;

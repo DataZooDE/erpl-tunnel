@@ -75,7 +75,10 @@ int64_t TunnelManager::CreateTunnel(const TunnelAuthParams &auth_params,
         // Wait for the tunnel to be actually ready by testing the connection
         if (!connection->TestTunnelConnection(timeout_seconds)) {
             connection->Close();
-            throw IOException("Tunnel creation timed out after " + std::to_string(timeout_seconds) + " seconds. Tunnel may not be ready.");
+            throw IOException(
+                "Tunnel creation timed out after " + std::to_string(timeout_seconds) +
+                "s waiting for the local listener. Check that local_port is free (not already in "
+                "use), that loopback connections aren't blocked, and consider raising timeout.");
         }
         
         // Store the connection (acquire mutex only for this operation)

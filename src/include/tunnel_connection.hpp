@@ -50,6 +50,8 @@ static constexpr const char* kStatusError = "Error";
  * for an SSH tunnel connection.
  */
 struct TunnelConnectionAttributes {
+    // Which transport this tunnel uses: "ssh" | "tailscale" | "netbird".
+    std::string backend{"ssh"};
     std::string ssh_host;
     int32_t ssh_port{kDefaultSshPort};
     std::string ssh_user;
@@ -63,7 +65,8 @@ struct TunnelConnectionAttributes {
     std::string error_message;
 
     bool operator==(const TunnelConnectionAttributes& other) const {
-        return ssh_host == other.ssh_host &&
+        return backend == other.backend &&
+               ssh_host == other.ssh_host &&
                ssh_port == other.ssh_port &&
                ssh_user == other.ssh_user &&
                remote_host == other.remote_host &&

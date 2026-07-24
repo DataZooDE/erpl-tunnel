@@ -167,8 +167,9 @@ MeshKind SecretMeshKind(ClientContext &context, const std::string &secret_name) 
 std::shared_ptr<MeshBackend> MeshBackendFromSecret(ClientContext &context, const std::string &secret_name) {
     if (secret_name.empty()) {
         throw InvalidInputException(
-            "Tunnel: tunnel_peers/tunnel_self require secret := '<name>' naming a mesh "
-            "tunnel secret (backend 'tailscale' or 'netbird').");
+            "Tunnel: tunnel_peers/tunnel_self require secret = '<name>' naming a mesh tunnel "
+            "secret, e.g. CREATE SECRET ts (TYPE tunnel, backend 'tailscale', auth_key '…', "
+            "hostname '…');");
     }
     auto match = LookupTunnelSecret(context, secret_name);
     if (!match.HasMatch()) {

@@ -83,7 +83,9 @@ void TunnelConnection::ValidateConnectionParameters(const std::string& ssh_host,
                                                    const std::string& ssh_user, const std::string& remote_host,
                                                    int32_t remote_port, int32_t local_port) const {
     if (ssh_host.empty()) {
-        throw InvalidInputException("SSH host cannot be empty");
+        throw InvalidInputException(
+            "SSH host is empty. Set it on the secret, e.g. "
+            "CREATE SECRET s (TYPE ssh_tunnel, host 'bastion.example.com', user 'jump', password '…');");
     }
     
     if (ssh_port < kMinPortNumber || ssh_port > kMaxPortNumber) {
@@ -336,8 +338,8 @@ TunnelAuthParams TunnelAuthParams::FromContext(ClientContext& context, const std
     if (!secret_match.HasMatch()) {
         if (secret_name.empty() || secret_name == "*") {
             throw InvalidInputException(
-                "Tunnel: no tunnel secret specified. Pass secret := '<name>' and create it "
-                "first, e.g. CREATE SECRET s (TYPE ssh_tunnel, ssh_host '…', ssh_user '…', "
+                "Tunnel: no tunnel secret specified. Pass secret = '<name>' and create it "
+                "first, e.g. CREATE SECRET s (TYPE ssh_tunnel, host '…', user '…', "
                 "password '…'). Not defaulting to an anonymous localhost node.");
         }
         throw InvalidInputException(

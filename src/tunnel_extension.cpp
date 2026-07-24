@@ -95,9 +95,9 @@ static void RegisterTunnelFunctions(ExtensionLoader &loader) {
     {
         CreateTableFunctionInfo info(CreateTunnelsTableFunction());
         FunctionDescription desc;
-        desc.description = "List all active SSH tunnels with their connection details and status.";
+        desc.description = "List all active tunnels (SSH and mesh) with their backend, connection details, and status.";
         desc.examples    = {"SELECT * FROM tunnels()"};
-        desc.categories  = {"tunnel", "ssh"};
+        desc.categories  = {"tunnel"};
         info.descriptions.push_back(std::move(desc));
         loader.RegisterFunction(std::move(info));
     }
@@ -110,7 +110,7 @@ static void RegisterTunnelFunctions(ExtensionLoader &loader) {
         CreateTableFunctionInfo info(CreateTunnelPeersFunction());
         FunctionDescription desc;
         desc.description = "Enumerate mesh peers for a tunnel secret (peer-local, no API token).";
-        desc.examples    = {"SELECT * FROM tunnel_peers(secret := 'ts')"};
+        desc.examples    = {"SELECT * FROM tunnel_peers(secret = 'ts')"};
         desc.categories  = {"tunnel", "mesh"};
         info.descriptions.push_back(std::move(desc));
         loader.RegisterFunction(std::move(info));
@@ -119,7 +119,7 @@ static void RegisterTunnelFunctions(ExtensionLoader &loader) {
         CreateTableFunctionInfo info(CreateTunnelSelfFunction());
         FunctionDescription desc;
         desc.description = "Show this node's own mesh identity (name/ip/tags) for a tunnel secret.";
-        desc.examples    = {"SELECT * FROM tunnel_self(secret := 'ts')"};
+        desc.examples    = {"SELECT * FROM tunnel_self(secret = 'ts')"};
         desc.categories  = {"tunnel", "mesh"};
         info.descriptions.push_back(std::move(desc));
         loader.RegisterFunction(std::move(info));
@@ -148,7 +148,7 @@ static void LoadInternal(ExtensionLoader &loader)
     OPENSSL_init_ssl(OPENSSL_INIT_NO_ATEXIT, nullptr);
 #endif
 
-    loader.SetDescription("SSH tunnel management for DuckDB — create and manage SSH tunnels to securely reach SAP systems behind firewalls.");
+    loader.SetDescription("Reach any TCP service from DuckDB through an SSH bastion, a Tailscale tailnet, or a NetBird network — one localhost:PORT, no daemon, no root.");
 
     // Anonymous, opt-out telemetry (SET erpl_telemetry_enabled=false to disable).
     // Standalone: use the shared posthog-telemetry library directly (no erpl_rfc

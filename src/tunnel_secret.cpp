@@ -27,9 +27,9 @@ unique_ptr<BaseSecret> CreateTunnelSecretFunction(ClientContext &context, Create
     static const std::vector<std::string> kKnownKeys = {
         // discriminator
         "backend",
-        // ssh
-        "ssh_host", "ssh_port", "ssh_user", "password", "private_key_path",
-        "passphrase", "auth_method",
+        // ssh (host/user/port are friendly aliases for ssh_host/ssh_user/ssh_port)
+        "ssh_host", "ssh_port", "ssh_user", "host", "user", "port",
+        "password", "private_key_path", "passphrase", "auth_method",
         // mesh (tailscale / netbird)
         "auth_key", "setup_key", "hostname", "tags", "groups", "control_url",
         "management_url", "state_dir", "ephemeral"};
@@ -44,7 +44,20 @@ unique_ptr<BaseSecret> CreateTunnelSecretFunction(ClientContext &context, Create
             }
         }
         if (!known) {
-            throw InvalidInputException("Unknown named parameter for tunnel secret: " + lower_name);
+            throw InvalidInputException(
+                "Unknown tunnel secret parameter '" + lower_name + "'. Valid parameters:\n"
+                "  SSH:      host/user/port (or ssh_host/ssh_user/ssh_port), password, "
+                "private_key_path, passphrase\n"
+                "  Mesh:     backend ('tailscale'|'netbird'), auth_key, setup_key, hostname, "
+                "tags, groups, control_url, management_url, ephemeral, state_dir");
+        }
+        // Normalise the friendly SSH aliases so downstream code reads one canonical key.
+        if (lower_name == "host") {
+            lower_name = "ssh_host";
+        } else if (lower_name == "user") {
+            lower_name = "ssh_user";
+        } else if (lower_name == "port") {
+            lower_name = "ssh_port";
         }
         result->secret_map[lower_name] = named_param.second.ToString();
     }
@@ -56,10 +69,13 @@ unique_ptr<BaseSecret> CreateTunnelSecretFunction(ClientContext &context, Create
 
 void SetTunnelSecretParameters(CreateSecretFunction &function) {
     function.named_parameters["backend"] = LogicalType::VARCHAR;
-    // ssh
+    // ssh (host/user/port are friendly aliases for ssh_host/ssh_user/ssh_port)
     function.named_parameters["ssh_host"] = LogicalType::VARCHAR;
     function.named_parameters["ssh_port"] = LogicalType::INTEGER;
     function.named_parameters["ssh_user"] = LogicalType::VARCHAR;
+    function.named_parameters["host"] = LogicalType::VARCHAR;
+    function.named_parameters["user"] = LogicalType::VARCHAR;
+    function.named_parameters["port"] = LogicalType::INTEGER;
     function.named_parameters["password"] = LogicalType::VARCHAR;
     function.named_parameters["private_key_path"] = LogicalType::VARCHAR;
     function.named_parameters["passphrase"] = LogicalType::VARCHAR;

@@ -34,7 +34,11 @@ string TunnelCreate(ClientContext &context, const FunctionParameters &parameters
     }
 
     if (remote_host.empty() || remote_port == 0 || local_port == 0) {
-        throw InvalidInputException("tunnel_create requires remote_host, remote_port, and local_port parameters");
+        throw InvalidInputException(
+            "tunnel_create requires remote_host, remote_port, and local_port. Example:\n"
+            "  PRAGMA tunnel_create(secret='my_secret', remote_host='host.internal', "
+            "remote_port=8000, local_port=9000 [, timeout=60, bind_all=false]);\n"
+            "(named parameters use '=' — a PRAGMA does not accept ':=')");
     }
 
     // Route by the secret's backend (ADR-003 uniform engine). Mesh secrets forward
