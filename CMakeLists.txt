@@ -65,12 +65,24 @@ set(EXTENSION_SOURCES
 set(MESH_BLOB_SOURCES "")
 set(MESH_DEFINES "")
 
-find_program(GO_EXECUTABLE go REQUIRED)
+# Go is needed ONLY when a mesh backend is bundled. A bare MESH_BACKEND=ssh build
+# must configure and compile with no Go present at all (that is the community-registry
+# and minimal-build path). When a mesh IS wanted, bootstrap a new-enough Go
+# (system Go if adequate, else a pinned download) — see cmake/bootstrap_go.cmake.
+set(MESH_WANTED OFF)
+if(MESH_BACKEND STREQUAL "tailscale" OR MESH_BACKEND STREQUAL "netbird" OR MESH_BACKEND STREQUAL "both")
+    set(MESH_WANTED ON)
+endif()
+if(MESH_WANTED)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/bootstrap_go.cmake)
+endif()
 
 function(add_mesh_shim MESH_ID SHIM_DIR SYM DEFINE)
     set(SHIM_SO "${CMAKE_CURRENT_BINARY_DIR}/${MESH_ID}_shim.so")
     set(BLOB_C "${CMAKE_CURRENT_BINARY_DIR}/${MESH_ID}_shim_blob.c")
     file(GLOB SHIM_GO_SRC "${CMAKE_CURRENT_SOURCE_DIR}/${SHIM_DIR}/*.go")
+    # GOTOOLCHAIN=local: use exactly the bootstrapped Go (already >= the shims' go.mod
+    # requirement), never fetch — deterministic and offline-friendly in CI.
     add_custom_command(
         OUTPUT ${SHIM_SO}
         COMMAND ${CMAKE_COMMAND} -E env CGO_ENABLED=1 GOFLAGS=-mod=mod GOTOOLCHAIN=local

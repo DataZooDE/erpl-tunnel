@@ -9,10 +9,15 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-gnu-unique")
 endif()
 
-# Mesh backend bundle selection (ADR-012). Default 'ssh' (zero Go, the
-# zero-dependency baseline). Override with e.g. `MESH_BACKEND=tailscale make debug`.
+# Mesh backend bundle selection (ADR-012). The PUBLISHED artifact (community registry
+# and self-hosted) is 'both' — one erpl_tunnel carrying ssh + tailscale + netbird, the
+# runtime picking one mesh via the single-mesh latch. The mesh shims are still only
+# dlopen'd lazily, so SSH-only sessions map no Go even from a 'both' build. Local devs
+# who want a fast, Go-free iteration build override with `MESH_BACKEND=ssh make debug`.
 if(DEFINED ENV{MESH_BACKEND})
     set(MESH_BACKEND "$ENV{MESH_BACKEND}" CACHE STRING "mesh backends to bundle" FORCE)
+else()
+    set(MESH_BACKEND "both" CACHE STRING "mesh backends to bundle" FORCE)
 endif()
 
 # Extension from this repo
