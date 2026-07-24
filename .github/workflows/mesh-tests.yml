@@ -22,6 +22,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  core-tests:
+    name: Pure C++ unit tests (mesh-peers JSON parser)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - name: Compile and run the DuckDB-free Catch2 core tests
+        run: make core_tests
+
   spike:
     name: Go-in-dlopen spike (R1)
     runs-on: ubuntu-latest
