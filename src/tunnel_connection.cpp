@@ -11,6 +11,9 @@
 #else
     #include <arpa/inet.h>
     #include <netdb.h>
+    #include <unistd.h>
+    #include <fcntl.h>
+    #include <sys/select.h>
 #endif
 
 #include <chrono>
@@ -20,6 +23,36 @@
 #include <thread>
 
 namespace duckdb {
+
+// Small cross-platform socket helpers so the SSH data path builds on both Winsock
+// and BSD sockets. Winsock diverges in three ways we care about: setsockopt takes
+// a char*, socket I/O uses recv/send (read/write only work on CRT fds), and the
+// last error comes from WSAGetLastError() with WSAE* codes rather than errno.
+namespace {
+inline int LastSocketError() {
+#ifdef WIN32
+    return WSAGetLastError();
+#else
+    return errno;
+#endif
+}
+// True when a non-blocking connect() reports "in progress / would block".
+inline bool SocketConnectInProgress(int err) {
+#ifdef WIN32
+    return err == WSAEWOULDBLOCK || err == WSAEINPROGRESS;
+#else
+    return err == EINPROGRESS || err == EWOULDBLOCK;
+#endif
+}
+// True when a non-blocking accept() reports "no pending connection right now".
+inline bool SocketWouldBlock(int err) {
+#ifdef WIN32
+    return err == WSAEWOULDBLOCK;
+#else
+    return err == EAGAIN || err == EWOULDBLOCK;
+#endif
+}
+} // namespace
 
 TunnelConnection::TunnelConnection() {
     // Initialize Windows sockets if on Windows
@@ -151,7 +184,7 @@ bool TunnelConnection::TestTunnelConnection(int32_t timeout_seconds) {
             return true;
         }
         
-        if (errno == EINPROGRESS) {
+        if (SocketConnectInProgress(LastSocketError())) {
             // Connection in progress, wait for it to complete
             fd_set write_fds;
             FD_ZERO(&write_fds);
@@ -475,7 +508,8 @@ void TunnelConnection::WorkerFunction() {
     
     // Allow quick re-bind after a previous tunnel on the same port was closed.
     int reuse = 1;
-    setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR,
+               reinterpret_cast<const char *>(&reuse), sizeof(reuse));
 
     sockaddr_in listen_addr{};
     listen_addr.sin_family = AF_INET;
@@ -522,7 +556,7 @@ void TunnelConnection::WorkerFunction() {
         // Accept connection
         const int32_t client_sock = accept(listen_sock, nullptr, nullptr);
         if (client_sock < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            if (SocketWouldBlock(LastSocketError())) {
                 continue;
             }
             break;
@@ -582,7 +616,8 @@ void TunnelConnection::ForwardData(int32_t client_socket, LIBSSH2_CHANNEL* chann
         tv.tv_usec = 50000; // 50ms timeout for faster response to shutdown
         
         if (select(client_socket + 1, &fds, nullptr, nullptr, &tv) > 0) {
-            const ssize_t bytes = read(client_socket, buffer, sizeof(buffer));
+            // recv/send (not read/write) so this works on Winsock as well as BSD.
+            const ssize_t bytes = recv(client_socket, buffer, static_cast<int>(sizeof(buffer)), 0);
             if (bytes <= 0) break;
             
             size_t written = 0;
@@ -603,7 +638,8 @@ void TunnelConnection::ForwardData(int32_t client_socket, LIBSSH2_CHANNEL* chann
         if (bytes_from_channel > 0) {
             size_t written = 0;
             while (written < static_cast<size_t>(bytes_from_channel) && is_running_) {
-                const ssize_t rc = write(client_socket, buffer + written, bytes_from_channel - written);
+                const ssize_t rc = send(client_socket, buffer + written,
+                                        static_cast<int>(bytes_from_channel - written), 0);
                 if (rc < 0) {
                     goto cleanup;
                 }
@@ -627,7 +663,11 @@ int32_t TunnelConnection::CreateSocket() {
 
 void TunnelConnection::CloseSocket(int32_t socket) noexcept {
     if (socket >= 0) {
+#ifdef WIN32
+        closesocket(socket);
+#else
         close(socket);
+#endif
     }
 }
 
