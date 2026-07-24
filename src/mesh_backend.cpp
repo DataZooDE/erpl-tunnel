@@ -1,10 +1,12 @@
 #include "mesh_backend.hpp"
+#include "mesh_peers_json.hpp"
 #include "tunnel_secret.hpp"
 
 #include "duckdb/common/exception.hpp"
 #include "duckdb/main/secret/secret_manager.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/function/pragma_function.hpp"
+#include "telemetry.hpp"
 
 #include "yyjson.hpp"
 
@@ -131,54 +133,9 @@ std::string MeshBackend::SelfJson() {
 
 namespace {
 
-struct MeshPeerRow {
-    std::string backend;
-    std::string host_name;
-    std::string dns_name;
-    std::string mesh_ip;
-    std::vector<std::string> tags;
-    bool online = false;
-};
-
-std::string JsonStr(yyjson_val *obj, const char *key) {
-    yyjson_val *v = yyjson_obj_get(obj, key);
-    return (v && yyjson_is_str(v)) ? std::string(yyjson_get_str(v)) : std::string();
-}
-
-std::vector<MeshPeerRow> ParsePeerArray(const std::string &json) {
-    std::vector<MeshPeerRow> rows;
-    yyjson_doc *doc = yyjson_read(json.c_str(), json.size(), 0);
-    if (!doc) {
-        return rows;
-    }
-    yyjson_val *root = yyjson_doc_get_root(doc);
-    if (root && yyjson_is_arr(root)) {
-        size_t idx, max;
-        yyjson_val *el;
-        yyjson_arr_foreach(root, idx, max, el) {
-            MeshPeerRow r;
-            r.backend = JsonStr(el, "backend");
-            r.host_name = JsonStr(el, "host_name");
-            r.dns_name = JsonStr(el, "dns_name");
-            r.mesh_ip = JsonStr(el, "mesh_ip");
-            yyjson_val *online = yyjson_obj_get(el, "online");
-            r.online = online && yyjson_is_true(online);
-            yyjson_val *tags = yyjson_obj_get(el, "tags");
-            if (tags && yyjson_is_arr(tags)) {
-                size_t ti, tmax;
-                yyjson_val *tv;
-                yyjson_arr_foreach(tags, ti, tmax, tv) {
-                    if (yyjson_is_str(tv)) {
-                        r.tags.emplace_back(yyjson_get_str(tv));
-                    }
-                }
-            }
-            rows.push_back(std::move(r));
-        }
-    }
-    yyjson_doc_free(doc);
-    return rows;
-}
+// The peer-status JSON parsing lives in the pure, DuckDB-free mesh_peers_json.* so it
+// can be unit-tested standalone (test/cpp). MeshPeer is that module's row type.
+using MeshPeerRow = MeshPeer;
 
 } // namespace
 
@@ -249,21 +206,23 @@ void PeersSchema(vector<LogicalType> &types, vector<string> &names) {
 
 unique_ptr<FunctionData> TunnelPeersBind(ClientContext &context, TableFunctionBindInput &input,
                                          vector<LogicalType> &return_types, vector<string> &names) {
+    PostHogTelemetry::Instance().RecordFunctionCall("tunnel_peers");
     PeersSchema(return_types, names);
     auto secret_name = GetTunnelSecretNameFromParams(input);
     auto backend = MeshBackendFromSecret(context, secret_name);
-    auto rows = ParsePeerArray(backend->PeersJson());
+    auto rows = ParseMeshPeersJson(backend->PeersJson());
     return make_uniq<MeshPeersBindData>(std::move(rows));
 }
 
 unique_ptr<FunctionData> TunnelSelfBind(ClientContext &context, TableFunctionBindInput &input,
                                         vector<LogicalType> &return_types, vector<string> &names) {
+    PostHogTelemetry::Instance().RecordFunctionCall("tunnel_self");
     PeersSchema(return_types, names);
     auto secret_name = GetTunnelSecretNameFromParams(input);
     auto backend = MeshBackendFromSecret(context, secret_name);
     // self is a single object; wrap into a one-element array for uniform emission.
     auto self = backend->SelfJson();
-    auto rows = ParsePeerArray("[" + self + "]");
+    auto rows = ParseMeshPeersJson("[" + self + "]");
     return make_uniq<MeshPeersBindData>(std::move(rows));
 }
 
@@ -297,6 +256,7 @@ TableFunction MakeMeshTableFunction(const char *name, table_function_bind_t bind
 } // namespace
 
 string MeshActivate(ClientContext &, const FunctionParameters &parameters) {
+    PostHogTelemetry::Instance().RecordFunctionCall("tunnel_mesh_activate");
     if (parameters.values.empty()) {
         throw InvalidInputException("tunnel_mesh_activate('tailscale'|'netbird')");
     }

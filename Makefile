@@ -117,3 +117,14 @@ nb_dataplane: nb_seeder
 	DUCKDB_BIN=$(shell command -v duckdb) \
 	  test/integration/mesh_dataplane_netbird.sh \
 	  $(PROJ_DIR)build/release/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+
+# Fast, DuckDB-free C++ unit tests for the pure mesh-peers JSON parser (Catch2,
+# bundled with duckdb). Seconds; no vcpkg, no docker — just needs the duckdb submodule.
+.PHONY: core_tests
+core_tests:
+	mkdir -p build
+	g++ -std=c++17 -O0 -g \
+	    -Isrc/include -Iduckdb/third_party/yyjson/include -Iduckdb/third_party/catch \
+	    test/cpp/test_mesh_peers_json.cpp src/mesh_peers_json.cpp duckdb/third_party/yyjson/yyjson.cpp \
+	    -o build/core_tests
+	build/core_tests

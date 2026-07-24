@@ -38,8 +38,15 @@ string TunnelCreate(ClientContext &context, const FunctionParameters &parameters
     // Route by the secret's backend (ADR-003 uniform engine). Mesh secrets forward
     // over the mesh node; ssh/absent secrets use the libssh2 path.
     auto secret_name = GetTunnelSecretNameFromParams(parameters);
+    auto mesh_kind = SecretMeshKind(context, secret_name);
+    // Record only the backend as a safe enum dimension — never the host, port, or
+    // secret (privacy contract). Lets us see backend mix without leaking anything.
+    const char *backend_name =
+        (mesh_kind == MeshKind::Tailscale) ? "tailscale" : (mesh_kind == MeshKind::NetBird) ? "netbird" : "ssh";
+    PostHogTelemetry::Instance().CaptureFeature("tunnel_create", {{"backend", backend_name}});
+
     int64_t tunnel_id;
-    if (SecretMeshKind(context, secret_name) != MeshKind::None) {
+    if (mesh_kind != MeshKind::None) {
         auto backend = MeshBackendFromSecret(context, secret_name);
         tunnel_id = g_tunnel_manager->CreateMeshTunnel(std::move(backend), remote_host, remote_port,
                                                        local_port, timeout_seconds, bind_all);

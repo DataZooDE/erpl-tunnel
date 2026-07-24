@@ -55,6 +55,7 @@ set(EXTENSION_SOURCES
     src/mesh_loader.cpp
     src/mesh_backend.cpp
     src/mesh_forwarder.cpp
+    src/mesh_peers_json.cpp
     duckdb/third_party/yyjson/yyjson.cpp
 )
 
