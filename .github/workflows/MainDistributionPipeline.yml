@@ -44,6 +44,9 @@ jobs:
   duckdb-v154-deploy:
     name: Deploy (v1.5.4)
     needs: duckdb-v154-build
+    # Self-hosted S3 distribution runs only on release tags. Day-to-day pushes are
+    # build+test only; primary distribution is via duckdb community-extensions.
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     uses: ./.github/workflows/_extension_deploy.yml
     secrets: inherit
     with:
@@ -73,6 +76,9 @@ jobs:
   duckdb-v145-deploy:
     name: Deploy (v1.4.5)
     needs: duckdb-v145-build
+    # Self-hosted S3 distribution runs only on release tags. Day-to-day pushes are
+    # build+test only; primary distribution is via duckdb community-extensions.
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     uses: ./.github/workflows/_extension_deploy.yml
     secrets: inherit
     with:
