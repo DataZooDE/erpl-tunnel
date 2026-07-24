@@ -118,9 +118,46 @@ which normally goes through the IdP-authenticated management API. Findings:
 
 **Recommendation:** (A) for CI viability; keep (B) documented as the fallback.
 
-### What was actually built and proven (path A)
+### Status: PASSING (path A). Root cause found & fixed.
 
-Path (A) was implemented and largely works:
+`test/integration/mesh_dataplane_netbird.sh` (`make nb_dataplane`) is green: our
+extension's `client/embed` node enrolls against the no-IdP self-hosted control
+plane, `tunnel_create`s to the official kernel-TUN `netbird` peer, and fetches the
+payload **through the tunnel** over direct WireGuard.
+
+**The real root cause** (an earlier note wrongly guessed STUN/relay — see below):
+NetBird's client picked the **iptables + ipset** firewall backend, which is
+**default-drop**, and the ACL *allow* rule failed to apply because the host kernel
+(Arch LTS 6.18) lacks the `ip_set_hash_net` type module — so `hash:net` ipset
+creation errored (`create ipset nb0000001: invalid type`), **0 rules applied**, and
+every overlay packet was dropped *even though WireGuard connected* (the handshake is
+below the firewall). Confirmed via `netbird status -d` (P2P, host/host, handshake
+recent, but curl+ping time out) and the client debug log (`ACL rules processed …
+total rules count: 0`).
+
+Two earlier red herrings that cost time, now documented so nobody repeats them:
+1. The `netbirdio/netbird` image has **no `curl`** — my first "official-to-official
+   fails" probe was a broken test (curl-not-found), not a data-path failure. Use a
+   throwaway `curlimages/curl` container joined with `--network container:<peer>`.
+2. It looked like "relay/STUN infra"; it was the **firewall**. The STUN entries do
+   show "Checking…" (placeholder STUN), but host candidates form a **direct** P2P
+   path regardless — STUN was never the blocker.
+
+**The fix:** set `NB_FORCE_USERSPACE_FIREWALL=true` on every NetBird node (the
+official peers in the compose, and our extension's node A `docker run`). NetBird then
+uses its Go **userspace packet filter** (uspfilter) instead of iptables+ipset —
+kernel-module-independent, no `sudo`/`modprobe`, CI-friendly. With it, `ACL rules
+processed … total rules count: 2` and data flows. Our `client/embed` node honours the
+same env because it runs in userspace-bind mode
+(`client/firewall/create_linux.go: IsUserspaceBind() && forceUserspaceFirewall()`).
+(An alternative for a host/CI that *has* the module: `sudo modprobe ip_set_hash_net
+ip_set_hash_ip` — but the userspace firewall is preferred everywhere since it needs
+no host privileges. This RCA was cross-checked with OpenAI Codex against the v0.74.7
+source.)
+
+### What was built (path A)
+
+Path (A) is implemented and passing:
 
 - `test/integration/netbird/seeder/` — a Go program that runs NetBird's own
   `store.NewTestStoreFromSQL(store.sql)` to produce a management-ready `store.db`
@@ -141,22 +178,14 @@ Path (A) was implemented and largely works:
   with the official peer — exactly like an official peer does (`configure WireGuard
   endpoint …`, `first wg handshake detected`).
 
-**Remaining gap (NOT our extension):** the NetBird **overlay data path** does not
-carry TCP payloads in this hermetic setup — **and this reproduces between two
-official peers** (peer C → peer B:8000 returns nothing despite "1/1 Connected").
-Root cause is NetBird self-hosted **STUN/relay config**: ICE gathering times out
-(the `management.json` STUN/TURN point at a non-existent server), so peers fall back
-to the relay, and the relay data forwarding isn't carrying traffic in this config.
-Fixing it is NetBird infra tuning — a working STUN/coturn so **direct** ICE forms on
-the shared subnet, or a correctly-wired relay data path — independent of erpl_tunnel.
-The Tailscale Tier 2 data plane (which forms direct WireGuard cleanly) is the
-delivered flagship; NetBird Tier 2's data-payload leg is left here with the exact
-diagnosis above.
+- **Full data-plane pass.** With the userspace-firewall fix (above), node A tunnels
+  to node B over direct WireGuard and fetches the payload through the tunnel
+  (`NETBIRD-DATAPLANE OK`).
 
-**Note:** the same **direct-WireGuard-on-one-subnet** trick as the Tailscale test is
-already applied (node A's container and the `netbird` peer share one docker subnet);
-the blocker is purely NetBird getting ICE/relay to move bytes, which official peers
-also hit here.
+> An earlier version of this section blamed STUN/relay and called the data plane a
+> "remaining gap." That was wrong — see **"Root cause found & fixed"** above. The
+> real cause was the iptables/ipset firewall default-dropping data; the fix is
+> `NB_FORCE_USERSPACE_FIREWALL=true`.
 
 **Files**
 - `test/integration/netbird/docker-compose.yml` — management + signal + relay (+ IdP

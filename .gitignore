@@ -46,3 +46,7 @@ test/integration/netbird/mgmt-data/
 test/integration/netbird/seeder/seeder
 test/integration/netbird/.env
 test/integration/headscale/.env
+
+# Codex delegation data
+.codex-delegate/
+.codex/

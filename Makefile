@@ -104,3 +104,16 @@ ts_dataplane:
 	DUCKDB_BIN=$(shell command -v duckdb) \
 	  test/integration/mesh_dataplane_tailscale.sh \
 	  $(PROJ_DIR)build/release/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+
+# NetBird data-plane test (Tier 2): real WireGuard to an official kernel-TUN peer,
+# no-IdP self-hosted control plane (seeded store). Builds the seeder if needed.
+# Needs a RELEASE netbird/both build + docker.
+#   MESH_BACKEND=netbird make release nb_dataplane
+.PHONY: nb_dataplane nb_seeder
+nb_seeder:
+	cd test/integration/netbird/seeder && \
+	  CGO_ENABLED=1 GOFLAGS=-mod=mod GOTOOLCHAIN=local go build -o seeder .
+nb_dataplane: nb_seeder
+	DUCKDB_BIN=$(shell command -v duckdb) \
+	  test/integration/mesh_dataplane_netbird.sh \
+	  $(PROJ_DIR)build/release/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension

@@ -62,10 +62,12 @@ echo "   node B NetBird IP: $B_IP"
 echo "== 4+5. node A container: enroll, tunnel to B:8000, fetch through the tunnel =="
 set +e
 OUT="$(docker run --rm --name erpl-node-a --network "$NET" \
+  --cap-add NET_ADMIN --device /dev/net/tun \
   -v "$EXT":/erpl_tunnel.duckdb_extension:ro \
   -v "$DUCKDB_BIN":/duckdb:ro \
   -v "$NB/nodea_entrypoint.sh":/nodea.sh:ro \
   -e NB_SETUP_KEY="$SETUP_KEY" -e B_IP="$B_IP" \
+  -e NB_FORCE_USERSPACE_FIREWALL=true \
   "$BASE_IMAGE" bash /nodea.sh 2>&1)"
 rc=$?
 set -e

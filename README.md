@@ -41,7 +41,8 @@ NetBird shares the identical shim ABI behind the single-mesh latch. Test matrix
 | NetBird shim, **identical C ABI** | `nm` + spike | ✅ |
 | **Single-mesh latch** (one mesh per process, symmetric) | `both` build, real dlopen | ✅ |
 | NetBird AGPL clearance (R4) | `go list -deps` audit | ✅ |
-| Full NetBird enrollment E2E | self-hosted mgmt/signal/relay stack | ⏳ scaffolded |
+| Real Tailscale **data plane** to an official kernel-TUN peer | Headscale + `tailscale` daemon, direct WireGuard | ✅ |
+| Real NetBird **data plane** to an official kernel-TUN peer | no-IdP self-hosted mgmt/signal/relay (seeded store), direct WireGuard | ✅ |
 
 See [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) for the phased plan
 and [`docs/NETBIRD_AGPL_AUDIT.md`](docs/NETBIRD_AGPL_AUDIT.md) for R4.

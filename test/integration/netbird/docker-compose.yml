@@ -70,6 +70,12 @@ services:
       NB_MANAGEMENT_URL: http://management:80
       NB_HOSTNAME: nb-peer
       NB_LOG_LEVEL: info
+      # Force NetBird's Go userspace packet filter instead of iptables+ipset. The
+      # iptables backend is default-drop and its ACL allow-rules need `hash:net`
+      # ipsets; if the host kernel lacks the ip_set_hash_net module, ipset creation
+      # fails, 0 rules apply, and ALL overlay data is dropped even though WireGuard
+      # connects. uspfilter applies the ACL in Go, kernel-module-independent.
+      NB_FORCE_USERSPACE_FIREWALL: "true"
     depends_on: [management]
     profiles: [peer]
 
