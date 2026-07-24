@@ -9,12 +9,12 @@ extension:
   language: C++
   build: cmake
   license: BSL-1.1
-  # The single artifact is MESH_BACKEND=both (extension_config.cmake), so it needs Go
-  # for the tsnet/netbird c-shared shims. Our CMake bootstraps a new-enough Go
-  # (cmake/bootstrap_go.cmake) since the registry's Go is too old.
+  # Mesh (glibc Linux + macOS) needs Go for the tsnet/netbird c-shared shims; our
+  # CMake bootstraps a new-enough Go (the registry's Go is too old). Windows + musl
+  # build SSH-only (no Go — extension_config.cmake selects MESH_BACKEND per platform).
   requires_toolchains: "go"
-  # Go cgo c-shared is glibc/Linux+macOS only: exclude wasm, all Windows, and all musl.
-  excluded_platforms: "windows_amd64;windows_amd64_mingw;windows_amd64_rtools;wasm_mvp;wasm_eh;wasm_threads;linux_amd64_musl;linux_arm64_musl"
+  # Only wasm is excluded: a tunneling extension needs raw TCP, which wasm lacks.
+  excluded_platforms: "wasm_mvp;wasm_eh;wasm_threads"
   maintainers:
     - datazoo
 

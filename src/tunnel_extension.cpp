@@ -10,7 +10,9 @@
 #include "pragma_tunnel_close.hpp"
 #include "pragma_tunnel_close_all.hpp"
 #include "scanner_tunnels.hpp"
+#ifdef ERPL_TUNNEL_HAS_MESH
 #include "mesh_backend.hpp"
+#endif
 #include "telemetry.hpp"
 
 // Needed for OPENSSL_init_ssl / OPENSSL_INIT_NO_ATEXIT
@@ -86,7 +88,9 @@ static void RegisterTunnelFunctions(ExtensionLoader &loader) {
     loader.RegisterFunction(CreateTunnelCreatePragma());
     loader.RegisterFunction(CreateTunnelClosePragma());
     loader.RegisterFunction(CreateTunnelCloseAllPragma());
+#ifdef ERPL_TUNNEL_HAS_MESH
     loader.RegisterFunction(CreateMeshActivatePragma());
+#endif
 
     {
         CreateTableFunctionInfo info(CreateTunnelsTableFunction());
@@ -98,8 +102,10 @@ static void RegisterTunnelFunctions(ExtensionLoader &loader) {
         loader.RegisterFunction(std::move(info));
     }
 
+#ifdef ERPL_TUNNEL_HAS_MESH
     // Mesh discovery (Tailscale/NetBird): peer-local enumeration, no control-plane
     // token. These trigger the lazy mesh-shim dlopen on first use for a given secret.
+    // Only present on builds that bundle a mesh backend (glibc Linux + macOS).
     {
         CreateTableFunctionInfo info(CreateTunnelPeersFunction());
         FunctionDescription desc;
@@ -118,6 +124,7 @@ static void RegisterTunnelFunctions(ExtensionLoader &loader) {
         info.descriptions.push_back(std::move(desc));
         loader.RegisterFunction(std::move(info));
     }
+#endif
 }
 
 static void LoadInternal(ExtensionLoader &loader)

@@ -9,16 +9,26 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-gnu-unique")
 endif()
 
-# Mesh backend bundle selection (ADR-012). The PUBLISHED artifact (community registry
-# and self-hosted) is 'both' — one erpl_tunnel carrying ssh + tailscale + netbird, the
-# runtime picking one mesh via the single-mesh latch. The mesh shims are still only
-# dlopen'd lazily, so SSH-only sessions map no Go even from a 'both' build. Local devs
-# who want a fast, Go-free iteration build override with `MESH_BACKEND=ssh make debug`.
+# Mesh backend bundle selection (ADR-012), per platform:
+#   glibc Linux + macOS -> 'both' (ssh + tailscale + netbird; runtime picks a mesh
+#                          via the single-mesh latch; mesh shims dlopen'd lazily).
+#   Windows + musl       -> 'ssh'  (the Go c-shared mesh shims use socketpair/AF_UNIX
+#                          + dlopen, which don't exist there; SSH via libssh2 works).
+# One extension name, per-platform backend set. Override with `MESH_BACKEND=... make`.
 if(DEFINED ENV{MESH_BACKEND})
-    set(MESH_BACKEND "$ENV{MESH_BACKEND}" CACHE STRING "mesh backends to bundle" FORCE)
+    set(_erpl_mesh "$ENV{MESH_BACKEND}")
 else()
-    set(MESH_BACKEND "both" CACHE STRING "mesh backends to bundle" FORCE)
+    set(_erpl_mesh "both")
+    if(WIN32 OR CMAKE_SYSTEM_NAME MATCHES "Windows")
+        set(_erpl_mesh "ssh")
+    endif()
+    # musl / wasm targets have no Go cgo c-shared — SSH-only there too.
+    if("$ENV{DUCKDB_PLATFORM}" MATCHES "musl|wasm" OR "${DUCKDB_PLATFORM}" MATCHES "musl|wasm")
+        set(_erpl_mesh "ssh")
+    endif()
 endif()
+set(MESH_BACKEND "${_erpl_mesh}" CACHE STRING "mesh backends to bundle" FORCE)
+message(STATUS "erpl_tunnel: MESH_BACKEND=${MESH_BACKEND} (platform=${CMAKE_SYSTEM_NAME}/$ENV{DUCKDB_PLATFORM})")
 
 # Extension from this repo
 duckdb_extension_load(erpl_tunnel

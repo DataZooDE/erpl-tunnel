@@ -2,12 +2,18 @@
 
 #include "duckdb.hpp"
 #include "tunnel_connection.hpp"
+#ifdef ERPL_TUNNEL_HAS_MESH
 #include "mesh_forwarder.hpp"
+#endif
 #include <unordered_map>
 #include <mutex>
 #include <memory>
 
 namespace duckdb {
+
+#ifdef ERPL_TUNNEL_HAS_MESH
+class MeshBackend; // forward decl for the mesh-tunnel factory
+#endif
 
 /**
  * @brief Manages multiple SSH tunnel connections.
@@ -27,11 +33,13 @@ public:
                          const string &ssh_user,
                          int timeout_seconds = 60,
                          bool bind_all = false);
+#ifdef ERPL_TUNNEL_HAS_MESH
     // Create a tunnel whose transport is a mesh backend (tailscale/netbird). The
     // backend is dialed per connection; shares the tunnel id space with SSH tunnels.
     int64_t CreateMeshTunnel(std::shared_ptr<MeshBackend> backend,
                              const string &remote_host, int remote_port, int local_port,
                              int timeout_seconds = 60, bool bind_all = false);
+#endif
     bool CloseTunnel(int64_t tunnel_id);
     bool IsTunnelActive(int64_t tunnel_id) const;
     
@@ -48,7 +56,9 @@ public:
 private:
     mutable std::mutex tunnels_mutex;
     std::unordered_map<int64_t, std::shared_ptr<TunnelConnection>> active_tunnels;
+#ifdef ERPL_TUNNEL_HAS_MESH
     std::unordered_map<int64_t, std::shared_ptr<MeshForwarder>> mesh_tunnels;
+#endif
     int64_t next_tunnel_id;
     
     // Helper methods

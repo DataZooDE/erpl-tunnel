@@ -2,7 +2,9 @@
 #include "duckdb/parser/parsed_data/create_pragma_function_info.hpp"
 #include "tunnel_manager.hpp"
 #include "tunnel_secret.hpp"
+#ifdef ERPL_TUNNEL_HAS_MESH
 #include "mesh_backend.hpp"
+#endif
 #include "telemetry.hpp"
 
 namespace duckdb {
@@ -36,8 +38,11 @@ string TunnelCreate(ClientContext &context, const FunctionParameters &parameters
     }
 
     // Route by the secret's backend (ADR-003 uniform engine). Mesh secrets forward
-    // over the mesh node; ssh/absent secrets use the libssh2 path.
+    // over the mesh node; ssh/absent secrets use the libssh2 path. On builds without
+    // mesh (Windows/musl), only the SSH path exists.
     auto secret_name = GetTunnelSecretNameFromParams(parameters);
+    int64_t tunnel_id;
+#ifdef ERPL_TUNNEL_HAS_MESH
     auto mesh_kind = SecretMeshKind(context, secret_name);
     // Record only the backend as a safe enum dimension — never the host, port, or
     // secret (privacy contract). Lets us see backend mix without leaking anything.
@@ -45,12 +50,15 @@ string TunnelCreate(ClientContext &context, const FunctionParameters &parameters
         (mesh_kind == MeshKind::Tailscale) ? "tailscale" : (mesh_kind == MeshKind::NetBird) ? "netbird" : "ssh";
     PostHogTelemetry::Instance().CaptureFeature("tunnel_create", {{"backend", backend_name}});
 
-    int64_t tunnel_id;
     if (mesh_kind != MeshKind::None) {
         auto backend = MeshBackendFromSecret(context, secret_name);
         tunnel_id = g_tunnel_manager->CreateMeshTunnel(std::move(backend), remote_host, remote_port,
                                                        local_port, timeout_seconds, bind_all);
-    } else {
+    } else
+#else
+    PostHogTelemetry::Instance().CaptureFeature("tunnel_create", {{"backend", "ssh"}});
+#endif
+    {
         auto auth_params = GetTunnelAuthParamsFromContext(context, parameters);
         tunnel_id = g_tunnel_manager->CreateTunnel(auth_params, remote_host, remote_port, local_port,
                                                    auth_params.ssh_host, auth_params.ssh_port,

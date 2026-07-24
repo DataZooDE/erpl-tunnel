@@ -1,6 +1,10 @@
 #include "tunnel_manager.hpp"
 #include "tunnel_connection.hpp"
 #include "tunnel_secret.hpp"
+#ifdef ERPL_TUNNEL_HAS_MESH
+#include "mesh_backend.hpp"
+#include "mesh_forwarder.hpp"
+#endif
 #include "duckdb/common/exception.hpp"
 #include <thread>
 #include <chrono>
@@ -87,6 +91,7 @@ int64_t TunnelManager::CreateTunnel(const TunnelAuthParams &auth_params,
     }
 }
 
+#ifdef ERPL_TUNNEL_HAS_MESH
 int64_t TunnelManager::CreateMeshTunnel(std::shared_ptr<MeshBackend> backend,
                                         const string &remote_host, int remote_port, int local_port,
                                         int timeout_seconds, bool bind_all) {
@@ -100,8 +105,10 @@ int64_t TunnelManager::CreateMeshTunnel(std::shared_ptr<MeshBackend> backend,
     }
     return tunnel_id;
 }
+#endif
 
 bool TunnelManager::CloseTunnel(int64_t tunnel_id) {
+#ifdef ERPL_TUNNEL_HAS_MESH
     {
         // Mesh tunnel?
         std::shared_ptr<MeshForwarder> mesh_to_close;
@@ -118,6 +125,7 @@ bool TunnelManager::CloseTunnel(int64_t tunnel_id) {
             return true;
         }
     }
+#endif
     std::shared_ptr<TunnelConnection> connection_to_close;
     
     {
@@ -189,9 +197,11 @@ std::vector<std::pair<int64_t, TunnelConnectionAttributes>> TunnelManager::ListT
         // Get the detailed attributes from the tunnel connection
         result.emplace_back(pair.first, pair.second->GetAttributes());
     }
+#ifdef ERPL_TUNNEL_HAS_MESH
     for (const auto &pair : mesh_tunnels) {
         result.emplace_back(pair.first, pair.second->GetAttributes());
     }
+#endif
 
     return result;
 }
@@ -225,10 +235,12 @@ void TunnelManager::CloseAllTunnels() {
         pair.second->Close();
     }
     active_tunnels.clear();
+#ifdef ERPL_TUNNEL_HAS_MESH
     for (auto &pair : mesh_tunnels) {
         pair.second->Close();
     }
     mesh_tunnels.clear();
+#endif
 }
 
 void TunnelManager::CleanupInactiveTunnels() {

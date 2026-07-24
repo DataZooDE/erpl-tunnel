@@ -48,6 +48,8 @@ include_directories(
 set(DUCKDB_THIRD_PARTY "${CMAKE_CURRENT_SOURCE_DIR}/duckdb/third_party")
 add_subdirectory(posthog-telemetry)
 
+# Base sources — cross-platform (SSH via libssh2 + winsock on Windows). These build
+# on every DuckDB platform.
 set(EXTENSION_SOURCES
     src/tunnel_extension.cpp
     src/tunnel_connection.cpp
@@ -57,35 +59,41 @@ set(EXTENSION_SOURCES
     src/pragma_tunnel_close.cpp
     src/pragma_tunnel_close_all.cpp
     src/scanner_tunnels.cpp
-    src/mesh_loader.cpp
-    src/mesh_backend.cpp
-    src/mesh_forwarder.cpp
-    src/mesh_peers_json.cpp
-    duckdb/third_party/yyjson/yyjson.cpp
 )
 
-# --- Mesh shims (Go c-shared) + embedded blobs ------------------------------
-# For each bundled mesh backend, build its Go shim as a c-shared library, embed
-# the resulting .so as a byte blob (scripts/embed_blob.cmake), and compile the
-# blob into the extension. The blob is dlopen'd lazily at runtime (mesh_loader).
+# --- Mesh backends: Unix-only (Go c-shared shims use socketpair/AF_UNIX + dlopen) --
+# The mesh C++ (mesh_loader/backend/forwarder/peers_json) and the Go shims compile
+# only on glibc Linux + macOS. On Windows/musl the extension is SSH-only, and none of
+# the mesh code is compiled — guarded by ERPL_TUNNEL_HAS_MESH in the base sources.
 set(MESH_BLOB_SOURCES "")
 set(MESH_DEFINES "")
 
-# Go is needed ONLY when a mesh backend is bundled. A bare MESH_BACKEND=ssh build
-# must configure and compile with no Go present at all (that is the community-registry
-# and minimal-build path). When a mesh IS wanted, bootstrap a new-enough Go
-# (system Go if adequate, else a pinned download) — see cmake/bootstrap_go.cmake.
 set(MESH_WANTED OFF)
 if(MESH_BACKEND STREQUAL "tailscale" OR MESH_BACKEND STREQUAL "netbird" OR MESH_BACKEND STREQUAL "both")
     set(MESH_WANTED ON)
 endif()
+
 if(MESH_WANTED)
+    list(APPEND EXTENSION_SOURCES
+        src/mesh_loader.cpp
+        src/mesh_backend.cpp
+        src/mesh_forwarder.cpp
+        src/mesh_peers_json.cpp
+        duckdb/third_party/yyjson/yyjson.cpp)
+    list(APPEND MESH_DEFINES ERPL_TUNNEL_HAS_MESH)
+    # Bootstrap a new-enough Go (system Go if adequate, else a pinned download).
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/bootstrap_go.cmake)
+endif()
+
+# Embed the shim blobs via assembler .incbin (a 55 MB C array OOM-kills cc1 on
+# constrained CI runners). Needs the ASM language.
+if(MESH_WANTED)
+    enable_language(ASM)
 endif()
 
 function(add_mesh_shim MESH_ID SHIM_DIR SYM DEFINE)
     set(SHIM_SO "${CMAKE_CURRENT_BINARY_DIR}/${MESH_ID}_shim.so")
-    set(BLOB_C "${CMAKE_CURRENT_BINARY_DIR}/${MESH_ID}_shim_blob.c")
+    set(BLOB_S "${CMAKE_CURRENT_BINARY_DIR}/${MESH_ID}_shim_blob.S")
     file(GLOB SHIM_GO_SRC "${CMAKE_CURRENT_SOURCE_DIR}/${SHIM_DIR}/*.go")
     # GOTOOLCHAIN=local: use exactly the bootstrapped Go (already >= the shims' go.mod
     # requirement), never fetch — deterministic and offline-friendly in CI. GOROOT is
@@ -101,14 +109,21 @@ function(add_mesh_shim MESH_ID SHIM_DIR SYM DEFINE)
                 ${CMAKE_CURRENT_SOURCE_DIR}/${SHIM_DIR}/go.sum
         COMMENT "Building ${MESH_ID} Go c-shared shim"
         VERBATIM)
+    if(APPLE)
+        set(_is_apple 1)
+    else()
+        set(_is_apple 0)
+    endif()
     add_custom_command(
-        OUTPUT ${BLOB_C}
-        COMMAND ${CMAKE_COMMAND} -DIN=${SHIM_SO} -DOUT=${BLOB_C} -DSYM=${SYM}
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_blob.cmake
+        OUTPUT ${BLOB_S}
+        COMMAND ${CMAKE_COMMAND} -DIN=${SHIM_SO} -DOUT=${BLOB_S} -DSYM=${SYM} -DIS_APPLE=${_is_apple}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_blob_asm.cmake
         DEPENDS ${SHIM_SO}
-        COMMENT "Embedding ${MESH_ID} shim blob"
+        COMMENT "Embedding ${MESH_ID} shim blob (.incbin)"
         VERBATIM)
-    set(MESH_BLOB_SOURCES ${MESH_BLOB_SOURCES} ${BLOB_C} PARENT_SCOPE)
+    # The .S embeds SHIM_SO via .incbin at assemble time; re-assemble if the .so changes.
+    set_source_files_properties(${BLOB_S} PROPERTIES OBJECT_DEPENDS ${SHIM_SO})
+    set(MESH_BLOB_SOURCES ${MESH_BLOB_SOURCES} ${BLOB_S} PARENT_SCOPE)
     set(MESH_DEFINES ${MESH_DEFINES} ${DEFINE} PARENT_SCOPE)
 endfunction()
 
