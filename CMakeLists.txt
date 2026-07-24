@@ -37,6 +37,11 @@ include_directories(
     src/include
     posthog-telemetry/include
     duckdb/third_party/yyjson/include
+    # httplib for the posthog-telemetry HTTPS client. Added directly (matching
+    # erpl-idoc) rather than relying on posthog-telemetry's DUCKDB_SRC_INCLUDE gate,
+    # which isn't set in every ci-tools flow (the v1.4-andium community build).
+    ${CMAKE_CURRENT_SOURCE_DIR}/duckdb/third_party
+    ${CMAKE_CURRENT_SOURCE_DIR}/duckdb/third_party/httplib
 )
 
 # PostHog telemetry (same anonymous, opt-out telemetry as erpl / erpl-idoc).
