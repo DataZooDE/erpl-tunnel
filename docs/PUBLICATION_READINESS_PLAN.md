@@ -19,28 +19,33 @@ change date). **Versioning: CalVer**, same as erpl / erpl-web — git tags
 string stamped on telemetry (`SetProduct` + `CaptureExtensionLoad`). *(Applied
 2026-07-24: single `ERPL_TUNNEL_VERSION` constant + `description.yml version`.)*
 
-Two things shape distribution:
+**Everything ships to the DuckDB community-extensions registry** — one `erpl_tunnel`
+extension built `MESH_BACKEND=both` (all backends, runtime-selected via the latch).
+BSL is fine (the registry already hosts BSL extensions; `erpl_idoc`'s BSL PR is
+mergeable-pending-maintainer). Self-hosting is an optional fallback, not the plan.
 
-1. The DuckDB **community-extensions** registry builds from source on its **own CI**,
-   which has **no Go toolchain** and no custom-build-step hook (`extra_extension_config`
-   is not passed through — confirmed from the `erpl_idoc` PR
-   duckdb/community-extensions#2203). So the mesh variants can *never* build there; at
-   most the **SSH-only (`MESH_BACKEND=ssh`, no Go)** core could.
-2. **BSL 1.1 is not OSI-approved.** The registry nominally wants an OSI license — but
-   `erpl_idoc` submitted **BSL-1.1** and its PR is "mergeable, pending a maintainer",
-   so BSL *may* pass in practice. Treat the community listing as **best-effort**, not
-   the primary channel.
+The registry builds from source on **extension-ci-tools** (`v1.5-variegata` for
+DuckDB v1.5.4). Two verified facts drive the build work — the mesh shims are Go, and:
 
-**Primary distribution = self-hosted** (BSL, the erpl `get.erpl.io` signed-repo model
-already wired in `MainDistributionPipeline.yml` + `_extension_deploy.yml`), carrying
-**all** variants (ssh/tailscale/netbird/both). This is BRD **R2 option (a/c)**.
+1. **The CI's Go is too old for our shims.** The linux **manylinux** container pins
+   **Go 1.20.5**; the macOS/Windows runners get **1.23** (`actions/setup-go@v4`). Our
+   shims need **tsnet ≥ 1.24** and **netbird go.mod `go 1.25.5`**. Worse, Go 1.20
+   predates `GOTOOLCHAIN` auto-download, so it can't self-upgrade. → **We must bootstrap
+   our own pinned Go** in the CMake shim build (download `go1.25.x` for the target
+   arch, use it for `-buildmode=c-shared`), making the build independent of the CI's
+   Go pin. Committed in `CMakeLists.txt`; needs network at build time (available).
+2. **Toolchain + platform declaration.** `description.yml` must declare the Go
+   toolchain (`requires_toolchains`/`enable_go`) *and* exclude every platform the mesh
+   (Go cgo `c-shared`) can't target: **wasm, windows, and musl** (the musl containers
+   install no Go, and cgo can't target musl — BRD C3). Only glibc linux amd64/arm64 +
+   osx amd64/arm64 remain.
 
-So the deliverables are:
-1. **Self-hosted (primary)**: `erpl_tunnel` ssh + mesh on the erpl channel, BSL,
-   CalVer — `SET custom_extension_repository` + `INSTALL erpl_tunnel`.
-2. **Community (best-effort)**: `erpl_tunnel` SSH-only submitted to
-   duckdb/community-extensions with the BSL descriptor (like `erpl_idoc`); accept it
-   may be declined on license grounds, in which case self-hosted stands alone.
+No `extra_extension_config` passthrough on the registry → everything (the
+`-fno-gnu-unique` guard, `MESH_BACKEND=both`, the Go bootstrap) lives in committed
+`extension_config.cmake` / `CMakeLists.txt`. This is the `erpl_idoc` lesson.
+
+Deliverable: **one BSL, CalVer `erpl_tunnel` (`both`) on duckdb/community-extensions**,
+glibc linux + macOS. Self-hosted mirror optional.
 
 ---
 
@@ -53,30 +58,34 @@ So the deliverables are:
   self-hosted is the primary channel. **Versioning = CalVer (DONE):** single
   `ERPL_TUNNEL_VERSION` constant used by both telemetry calls; `description.yml
   version: 2026.07.24`; releases tagged `vYYYY.MM.DD`.
-- **A2 · Make Go optional for the SSH-only build (concrete bug).**
-  `CMakeLists.txt` calls `find_program(GO_EXECUTABLE go REQUIRED)` unconditionally, so
-  `MESH_BACKEND=ssh` fails to configure without Go — which breaks the community CI.
-  Move the `find_program` (and make it `REQUIRED` only) **inside** the mesh-bundled
-  branches; the `ssh` build must configure and compile with **no Go present**.
-- **A3 · Build the SSH-only core on the exact community toolchain** (DuckDB v1.5.4 /
-  ci-tools `v1.5-variegata` / vcpkg `84bab45…`) and confirm green. The
-  `-fno-gnu-unique` GCC guard is already committed in `extension_config.cmake` (the
-  `erpl_idoc` lesson — the registry has no `extra_extension_config` passthrough); keep
-  it there. Verify the loadable entrypoint name and that all sqllogictests pass.
-- **A4 · Finalize `packaging/description.yml`** for the SSH-only core (license per A1,
-  a real `docs.hello_world`/`extended_description`, `excluded_platforms` = windows
-  mingw/rtools + wasm, matching sibling `erpl_web`/`erpl_idoc`). Pin `repo.ref` to a
-  release commit.
-- **A5 · Stand up the self-hosted channel for mesh variants** (signed extension repo,
-  the erpl `get.erpl.io` flow already in `MainDistributionPipeline.yml` +
-  `_extension_deploy.yml`). Document the `SET custom_extension_repository` + `INSTALL
-  erpl_tunnel` install path for mesh users.
-- **A6 · Codex review round #1 (build/packaging):** have Codex review the CMake
-  Go-conditional change, `extension_config.cmake`, and `description.yml` against the
-  community-extensions `build.yml` contract and the `erpl_idoc` precedent.
+- **A2 · Bootstrap a pinned Go toolchain in the CMake shim build.** The CI's Go
+  (1.20.5 linux / 1.23 runners) is too old and can't auto-upgrade. Add a CMake step
+  that downloads a pinned `go1.25.x` for the build arch (linux amd64/arm64, osx
+  amd64/arm64), verifies its checksum, and uses it for `go build -buildmode=c-shared`
+  (drop `GOTOOLCHAIN=local` → point `GOROOT`/`PATH` at the fetched toolchain). Cache
+  it. Also make `find_program(go)` only `REQUIRED` when a mesh backend is bundled, so a
+  bare `MESH_BACKEND=ssh` build still needs no Go at all.
+- **A3 · Make the community build produce `both`, config in committed files.** In
+  `extension_config.cmake` (no `extra_extension_config` passthrough on the registry):
+  `set(MESH_BACKEND "both")`, keep the `-fno-gnu-unique` GCC guard, and any Go-bootstrap
+  glue. Build on the exact community toolchain (v1.5.4 / `v1.5-variegata` / vcpkg
+  `84bab45…`) and confirm green incl. the Go shims; verify the loadable entrypoint name
+  and all sqllogictests pass.
+- **A4 · Finalize `packaging/description.yml`.** `license: BSL-1.1`, `version`
+  CalVer, real `docs.hello_world`/`extended_description`; declare the **Go toolchain**
+  (`requires_toolchains: go` / `enable_go`); `excluded_platforms` = **wasm + all
+  windows + all musl** (glibc-only Go cgo). Pin `repo.ref` to the release commit.
+- **A5 · Optional self-hosted mirror.** The erpl `get.erpl.io` flow
+  (`MainDistributionPipeline.yml` + `_extension_deploy.yml`) can also publish the
+  variants for `SET custom_extension_repository` users — nice-to-have, not required.
+- **A6 · Codex review round #1 (build/packaging):** Codex reviews the Go-bootstrap
+  CMake, `extension_config.cmake`, and `description.yml` against the community-extensions
+  `build.yml` contract, the ci-tools Go/toolchain handling, and the `erpl_idoc`
+  precedent — especially the manylinux Go-download path and the platform exclusions.
 
-**Exit:** SSH-only core builds green on the community toolchain with no Go; license
-resolved; description.yml final; self-hosted mesh channel live.
+**Exit:** the `both` extension builds green on the community toolchain (Go shims
+included via the bootstrapped toolchain) across glibc linux + macOS; `description.yml`
+final; license/version consistent.
 
 ## Phase B — Feature/quality gaps from the original plan
 
@@ -167,11 +176,13 @@ shape for a **user**. Restructure into user-facing guides + a design archive.
 - **E1 · macOS build + `.dylib` signing/notarization (R7).** Required for the mesh
   shims to `dlopen` under Gatekeeper; sign the embedded blob at build; validate
   extract-and-load on osx/arm64 + osx/amd64.
-- **E2 · Windows decision (NG5/R6).** libssh2 SSH-only could build on Windows for the
-  community core (mesh stays deferred — Go `c-shared` on Windows is the weakest
-  target). Decide: enable SSH-only Windows, or keep excluded.
-- **E3 · musl / glibc-only guard.** A clear build-time/runtime error on musl for the
-  mesh path; document the glibc floor and the manylinux CI build for portability.
+- **E2 · Windows + musl excluded (NG5/R6, C3).** Since the single community artifact
+  is `both` (Go), it can't target Windows or musl — both are in `excluded_platforms`.
+  (A separate ssh-only Windows build isn't an option: community-extensions is one
+  artifact per name.) Document this; no per-platform split.
+- **E3 · glibc floor.** Building on the manylinux community container gives a low,
+  portable glibc floor (better than a local rolling-distro build). Document it and the
+  musl-unsupported behaviour; keep a clear error if a mesh path is ever hit on musl.
 
 ## Cross-cutting: Codex review cadence
 
@@ -184,7 +195,7 @@ the diff + context, apply verified findings, re-verify.
 
 1. **A1 (license) is settled — BSL 1.1, CalVer.** No gate here anymore; self-hosted
    is the primary channel, the community PR is best-effort.
-2. **A2–A3** (Go-optional + community-toolchain build) in parallel with **B1–B2**
+2. **A2–A3** (Go-bootstrap + `both` community-toolchain build) in parallel with **B1–B2**
    (telemetry + backend column — cheap, high value).
 3. **B3–B5** (taxonomy, logging, robustness) with **C1–C3** (unit + redaction tests),
    Codex round #2/#3.
@@ -200,10 +211,11 @@ the diff + context, apply verified findings, re-verify.
 
 - [ ] License = BSL 1.1 consistent across `LICENSE` + `description.yml` + headers;
       CalVer version single-sourced (DONE).
-- [ ] SSH-only core builds green on the community toolchain **with no Go**; all
-      sqllogictests + core_tests pass.
-- [ ] Mesh variants self-hosted (primary) + install-documented; both data-plane E2Es
-      green in CI. Community SSH-only PR opened best-effort (BSL).
+- [ ] The `both` extension builds green on the **community toolchain** (Go shims via
+      the bootstrapped `go1.25.x`) across glibc linux amd64/arm64 + osx amd64/arm64;
+      all sqllogictests + core_tests pass; wasm/windows/musl excluded.
+- [ ] `description.yml` declares the Go toolchain + exclusions; both data-plane E2Es
+      green in our own CI. Community PR opened against a pinned release ref.
 - [ ] Telemetry parity + `TELEMETRY.md`; `tunnels().backend`; error taxonomy; log
       setting.
 - [ ] Unit tests incl. redaction; quack/RFC payloads (or documented deferral).
