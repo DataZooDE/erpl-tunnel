@@ -62,6 +62,10 @@ integration_tests: debug
 # hardcoded .../linux_amd64/... path made these targets fail with "extension not
 # found" even though the build had succeeded.
 EXT_RELEASE = $(firstword $(wildcard $(PROJ_DIR)build/release/repository/*/*/erpl_tunnel.duckdb_extension))
+# Prefer a system duckdb, else the one we just built. CI has no duckdb on PATH, so
+# a bare `command -v duckdb` yields an empty string and the harnesses end up
+# mounting "" into their containers ("invalid spec: :/duckdb:ro").
+DUCKDB_CLI = $(firstword $(shell command -v duckdb) $(wildcard $(PROJ_DIR)build/release/duckdb))
 EXT_DEBUG   = $(firstword $(wildcard $(PROJ_DIR)build/debug/repository/*/*/erpl_tunnel.duckdb_extension))
 
 # --- Mesh backend spikes / proofs (need MESH_BACKEND != ssh) ----------------
@@ -106,7 +110,7 @@ latch_test:
 # in a bare, network-isolated container. Needs a RELEASE build: `make release`.
 .PHONY: zero_dep
 zero_dep:
-	DUCKDB_BIN=$(shell command -v duckdb) \
+	DUCKDB_BIN=$(DUCKDB_CLI) \
 	  test/integration/zero_dependency.sh \
 	  $(EXT_RELEASE)
 
@@ -115,7 +119,7 @@ zero_dep:
 #   MESH_BACKEND=tailscale make release ts_dataplane
 .PHONY: ts_dataplane
 ts_dataplane:
-	DUCKDB_BIN=$(shell command -v duckdb) \
+	DUCKDB_BIN=$(DUCKDB_CLI) \
 	  test/integration/mesh_dataplane_tailscale.sh \
 	  $(EXT_RELEASE)
 
@@ -128,7 +132,7 @@ nb_seeder:
 	cd test/integration/netbird/seeder && \
 	  CGO_ENABLED=1 GOFLAGS=-mod=mod GOTOOLCHAIN=local go build -o seeder .
 nb_dataplane: nb_seeder
-	DUCKDB_BIN=$(shell command -v duckdb) \
+	DUCKDB_BIN=$(DUCKDB_CLI) \
 	  test/integration/mesh_dataplane_netbird.sh \
 	  $(EXT_RELEASE)
 
