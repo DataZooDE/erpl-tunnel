@@ -11,12 +11,15 @@ on:
       - 'src/mesh_*'
       - 'cmake/**'
       - 'test/integration/**'
+      - 'Makefile'
       - '.github/workflows/mesh-tests.yml'
   pull_request:
     paths:
       - 'shim/**'
       - 'src/mesh_*'
       - 'cmake/**'
+      - 'test/integration/**'
+      - 'Makefile'
   workflow_dispatch:
 
 concurrency:
