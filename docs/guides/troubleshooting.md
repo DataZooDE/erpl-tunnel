@@ -86,6 +86,13 @@ so the first visible symptom is usually the peer's "Could not connect to server"
 nothing ever started listening. Check the server's own output before blaming the
 tunnel.
 
+**Peer says `schema "lake" does not exist` for an ATTACHed catalog** — quack serves
+the **default** catalog only. A database you `ATTACH`ed on the gateway (a DuckLake,
+a second .db, a Postgres) is a separate catalog and is not reachable as
+`remote.<that_catalog>.*`. Surface what you want to share as views in `main`:
+`CREATE VIEW measurements AS SELECT * FROM lake.measurements;` — peers then read
+`remote.main.measurements`. This is also the right seam for deciding what to expose.
+
 **Peer gets a TLS or handshake error attaching over quack** — pass
 `DISABLE_SSL true` in the `ATTACH`. The quack client defaults to HTTPS for any
 non-local address, and the mesh already encrypts the hop. Remember also that

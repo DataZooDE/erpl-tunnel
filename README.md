@@ -147,6 +147,39 @@ ATTACH 'quack:100.x.y.z:9494' AS sapgw (TYPE quack,
 SELECT CARRID, count(*) FROM sapgw.main.flights GROUP BY 1 ORDER BY 2 DESC;
 ```
 
+
+#### Sharing a DuckLake lakehouse the same way
+
+The same shape publishes a [DuckLake](https://ducklake.select) catalog. This is
+useful when the lakehouse sits on storage only one machine can reach — an
+on-prem object store, a mounted volume, or a private S3 endpoint — and you want
+peers to query it without handing out storage credentials.
+
+```sql
+INSTALL ducklake; LOAD ducklake;
+INSTALL quack;    LOAD quack;
+
+ATTACH 'ducklake:/srv/lake/catalog.ducklake' AS lake (DATA_PATH '/srv/lake/data/');
+
+-- quack serves the DEFAULT catalog, so surface the lake through views in main.
+-- A peer cannot reach `lake.*` directly across the connection.
+CREATE VIEW measurements AS SELECT * FROM lake.measurements;
+
+CALL quack_serve('quack:127.0.0.1:9494', token => 'a-long-shared-token',
+    allow_other_hostname => true);
+PRAGMA tunnel_export(secret = 'ts', local_port = 9494);
+```
+
+Peers then query the lakehouse as an ordinary table, with filters and aggregates
+evaluated on the gateway so only results cross the network:
+
+```sql
+ATTACH 'quack:100.x.y.z:9494' AS lakegw (TYPE quack,
+    TOKEN 'a-long-shared-token', DISABLE_SSL true);
+
+SELECT id, value FROM lakegw.main.measurements WHERE value > 4 ORDER BY id;
+```
+
 `DISABLE_SSL true` is required — the quack client defaults to HTTPS for a
 non-local address, and the mesh already encrypts the hop. Works the same on
 NetBird; see the [Tailscale](docs/guides/tailscale.md) and

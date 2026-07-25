@@ -45,6 +45,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Preflight: a DuckDB that cannot name its own version cannot install anything.
+# The extension repository is version-and-platform stamped, so a build reporting
+# v0.0.1 (DuckDB's fallback when `git describe` fails on the submodule — see the
+# CMake warning "Continuing with dummy version v0.0.1") 404s on every request.
+# Checking here turns two confusing 404s into one sentence naming the cause.
+DUCKDB_VER="$("$DUCKDB_BIN" -noheader -list -c "SELECT version();" 2>/dev/null | tr -d '[:space:]')"
+if [[ "$DUCKDB_VER" == "v0.0.1" || -z "$DUCKDB_VER" ]]; then
+  echo "FAIL: this DuckDB reports version '${DUCKDB_VER:-<none>}', so no extension"
+  echo "      repository can serve it. The duckdb submodule has no tags — the build"
+  echo "      fell back to a dummy version. Fix with:"
+  echo "        git -C duckdb fetch --tags --force && <rebuild>"
+  echo "      (In CI, actions/checkout does not fetch submodule tags.)"
+  exit 2
+fi
+echo "   duckdb reports $DUCKDB_VER"
+
 echo "== 0. fetch quack + httpfs once, on the host =="
 # `core` before `core_nightly`: quack is in both but not for the same DuckDB
 # versions — at v1.5.5 core_nightly 404s and core serves it. httpfs is quack's
