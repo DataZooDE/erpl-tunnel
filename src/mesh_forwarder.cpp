@@ -2,13 +2,10 @@
 
 #include "duckdb/common/exception.hpp"
 
-#include <arpa/inet.h>
+#include "socket_compat.hpp"
+
 #include <chrono>
 #include <cstring>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 namespace duckdb {
 
@@ -31,29 +28,35 @@ void MeshForwarder::Start(int timeout_seconds) {
     // Bring the mesh node up first — surfaces auth/control errors before we bind.
     backend_->EnsureUp();
 
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
+    EnsureSocketSubsystem();
+    socket_t sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (!SocketValid(sock)) {
         throw IOException("Tunnel: could not create listening socket.");
     }
-    int reuse = 1;
-    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+#ifdef _WIN32
+    // SO_REUSEADDR on Windows lets another local process hijack the port, which
+    // would defeat the loopback-bind posture (FR-2/ADR-006). SO_EXCLUSIVEADDRUSE is
+    // the Windows way to say "quick rebind, but exclusively mine".
+    SetSocketOptInt(sock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, 1);
+#else
+    SetSocketOptInt(sock, SOL_SOCKET, SO_REUSEADDR, 1);
+#endif
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(static_cast<uint16_t>(attrs_.local_port));
     addr.sin_addr.s_addr = inet_addr(attrs_.bind_addr.c_str());
     if (bind(sock, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
-        close(sock);
+        CloseSocketHandle(sock);
         throw IOException("Tunnel: local port " + std::to_string(attrs_.local_port) +
                           " is already in use. Choose a free local_port.");
     }
     if (listen(sock, 16) != 0) {
-        close(sock);
+        CloseSocketHandle(sock);
         throw IOException("Tunnel: failed to listen on port " + std::to_string(attrs_.local_port) + ".");
     }
     // Non-blocking accept so the loop can observe running_ and shut down promptly.
-    int flags = fcntl(sock, F_GETFL, 0);
-    fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+    SetSocketNonBlocking(sock);
 
     listen_sock_ = sock;
     running_.store(true);
@@ -63,13 +66,17 @@ void MeshForwarder::Start(int timeout_seconds) {
     // Probe: wait until the listener is connectable (FR-6).
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeout_seconds);
     while (std::chrono::steady_clock::now() < deadline) {
-        int probe = socket(AF_INET, SOCK_STREAM, 0);
+        socket_t probe = socket(AF_INET, SOCK_STREAM, 0);
+        if (!SocketValid(probe)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            continue;
+        }
         sockaddr_in pa{};
         pa.sin_family = AF_INET;
         pa.sin_port = htons(static_cast<uint16_t>(attrs_.local_port));
         pa.sin_addr.s_addr = inet_addr("127.0.0.1");
         bool ok = (connect(probe, reinterpret_cast<sockaddr *>(&pa), sizeof(pa)) == 0);
-        close(probe);
+        CloseSocketHandle(probe);
         if (ok) {
             return;
         }
@@ -85,71 +92,96 @@ void MeshForwarder::AcceptLoop() {
         FD_ZERO(&rfds);
         FD_SET(listen_sock_, &rfds);
         timeval tv{0, 100000}; // 100ms
-        int sel = select(listen_sock_ + 1, &rfds, nullptr, nullptr, &tv);
+        int sel = select(SelectNfds(listen_sock_, listen_sock_), &rfds, nullptr, nullptr, &tv);
         if (sel <= 0) {
             continue;
         }
-        int client = accept(listen_sock_, nullptr, nullptr);
-        if (client < 0) {
+        socket_t client = accept(listen_sock_, nullptr, nullptr);
+        if (!SocketValid(client)) {
             continue;
         }
         if (!running_.load()) {
-            close(client);
+            CloseSocketHandle(client);
             break;
         }
-        // MeshStream is an fd here; the Winsock port replaces this with socket_t.
-        int mesh_fd = -1;
+        socket_t mesh_sock = kInvalidSocket;
         try {
-            mesh_fd = static_cast<int>(backend_->Dial(attrs_.remote_host, attrs_.remote_port));
+            mesh_sock = static_cast<socket_t>(backend_->Dial(attrs_.remote_host, attrs_.remote_port));
         } catch (const std::exception &e) {
             attrs_.error_message = e.what();
-            close(client);
+            CloseSocketHandle(client);
             continue;
         }
         std::lock_guard<std::mutex> lock(mu_);
-        workers_.emplace_back([this, client, mesh_fd]() { Pump(client, mesh_fd); });
+        workers_.emplace_back([this, client, mesh_sock]() { Pump(client, mesh_sock); });
     }
 }
 
-void MeshForwarder::Pump(int client_fd, int mesh_fd) {
-    // Bidirectional byte pump between the local client and the mesh fd. Both are
-    // plain OS fds, so this is a symmetric select/read/write loop.
+// Write the whole buffer, tolerating short sends. A single send() may transfer
+// fewer bytes than asked; the previous `write(...) != n` test treated that as a
+// fatal error and silently dropped the remainder, corrupting the stream.
+static bool SendAll(socket_t s, const char *buf, size_t len, const std::atomic<bool> &running) {
+    size_t sent = 0;
+    while (sent < len) {
+        if (!running.load()) {
+            return false;
+        }
+        const int n = SocketSend(s, buf + sent, len - sent);
+        if (n > 0) {
+            sent += static_cast<size_t>(n);
+            continue;
+        }
+        if (n < 0 && SocketWouldBlock(LastSocketError())) {
+            continue; // socket is blocking here, but stay correct if that changes
+        }
+        return false;
+    }
+    return true;
+}
+
+void MeshForwarder::Pump(socket_t client_sock, socket_t mesh_sock) {
+    // Bidirectional byte pump between the local client and the mesh stream. Both
+    // are OS sockets, so recv/send (never read/write, which on Windows only work on
+    // CRT file descriptors) and a symmetric select loop.
     char buf[16384];
     fd_set rfds;
-    int maxfd = (client_fd > mesh_fd ? client_fd : mesh_fd) + 1;
     while (running_.load()) {
         FD_ZERO(&rfds);
-        FD_SET(client_fd, &rfds);
-        FD_SET(mesh_fd, &rfds);
+        FD_SET(client_sock, &rfds);
+        FD_SET(mesh_sock, &rfds);
         timeval tv{0, 100000};
-        int sel = select(maxfd, &rfds, nullptr, nullptr, &tv);
+        int sel = select(SelectNfds(client_sock, mesh_sock), &rfds, nullptr, nullptr, &tv);
         if (sel < 0) {
             break;
         }
         if (sel == 0) {
             continue;
         }
-        if (FD_ISSET(client_fd, &rfds)) {
-            ssize_t n = read(client_fd, buf, sizeof(buf));
-            if (n <= 0) {
+        if (FD_ISSET(client_sock, &rfds)) {
+            const int n = SocketRecv(client_sock, buf, sizeof(buf));
+            if (n == 0) {
+                // The local client is done sending; let the peer see EOF rather
+                // than tearing the whole tunnel down mid-response.
+                ShutdownWrite(mesh_sock);
                 break;
             }
-            if (write(mesh_fd, buf, static_cast<size_t>(n)) != n) {
+            if (n < 0 || !SendAll(mesh_sock, buf, static_cast<size_t>(n), running_)) {
                 break;
             }
         }
-        if (FD_ISSET(mesh_fd, &rfds)) {
-            ssize_t n = read(mesh_fd, buf, sizeof(buf));
-            if (n <= 0) {
+        if (FD_ISSET(mesh_sock, &rfds)) {
+            const int n = SocketRecv(mesh_sock, buf, sizeof(buf));
+            if (n == 0) {
+                ShutdownWrite(client_sock);
                 break;
             }
-            if (write(client_fd, buf, static_cast<size_t>(n)) != n) {
+            if (n < 0 || !SendAll(client_sock, buf, static_cast<size_t>(n), running_)) {
                 break;
             }
         }
     }
-    close(client_fd);
-    close(mesh_fd);
+    CloseSocketHandle(client_sock);
+    CloseSocketHandle(mesh_sock);
 }
 
 void MeshForwarder::Close() {
@@ -166,9 +198,9 @@ void MeshForwarder::Close() {
         }
         workers_.clear();
     }
-    if (listen_sock_ >= 0) {
-        close(listen_sock_);
-        listen_sock_ = -1;
+    if (SocketValid(listen_sock_)) {
+        CloseSocketHandle(listen_sock_);
+        listen_sock_ = kInvalidSocket;
     }
     attrs_.status = "Closed";
 }

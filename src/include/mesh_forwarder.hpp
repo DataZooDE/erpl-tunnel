@@ -9,6 +9,7 @@
 // are OS fds, but the accept/forward shape is the same.
 
 #include "mesh_backend.hpp"
+#include "socket_compat.hpp"
 #include "tunnel_connection.hpp" // TunnelConnectionAttributes
 
 #include <atomic>
@@ -40,11 +41,11 @@ public:
 
 private:
     void AcceptLoop();
-    void Pump(int client_fd, int mesh_fd);
+    void Pump(socket_t client_sock, socket_t mesh_sock);
 
     std::shared_ptr<MeshBackend> backend_;
     TunnelConnectionAttributes attrs_;
-    int listen_sock_ = -1;
+    socket_t listen_sock_ = kInvalidSocket;
     std::atomic<bool> running_{false};
     std::thread accept_thread_;
     std::vector<std::thread> workers_;
