@@ -97,9 +97,10 @@ void MeshForwarder::AcceptLoop() {
             close(client);
             break;
         }
+        // MeshStream is an fd here; the Winsock port replaces this with socket_t.
         int mesh_fd = -1;
         try {
-            mesh_fd = backend_->Dial(attrs_.remote_host, attrs_.remote_port);
+            mesh_fd = static_cast<int>(backend_->Dial(attrs_.remote_host, attrs_.remote_port));
         } catch (const std::exception &e) {
             attrs_.error_message = e.what();
             close(client);

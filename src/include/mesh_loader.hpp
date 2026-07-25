@@ -12,6 +12,7 @@
 
 #include "duckdb.hpp"
 #include <cstddef>
+#include <cstdint>
 #include <mutex>
 #include <string>
 
@@ -21,6 +22,12 @@ enum class MeshKind { None = 0, Tailscale = 1, NetBird = 2 };
 
 const char *MeshKindName(MeshKind kind);
 
+// An OS stream handle from the shim: a file descriptor on Unix, a Winsock SOCKET
+// on Windows. uintptr_t because a Win64 SOCKET is UINT_PTR and will not fit an
+// int. Mirrors `mesh_stream` in shim/mesh_shim.h.
+using MeshStream = uintptr_t;
+static constexpr MeshStream kMeshStreamInvalid = static_cast<MeshStream>(-1);
+
 // Resolved C ABI function pointers from a loaded shim (mesh_shim.h).
 struct MeshApi {
     int (*kind)();
@@ -28,7 +35,7 @@ struct MeshApi {
     int (*set_str)(long, const char *, const char *);
     int (*set_bool)(long, const char *, int);
     int (*up)(long);
-    int (*dial)(long, const char *, int, int *);
+    int (*dial)(long, const char *, int, MeshStream *);
     int (*peers_json)(long, char *, size_t, size_t *);
     int (*self_json)(long, char *, size_t, size_t *);
     int (*errmsg)(long, char *, size_t);

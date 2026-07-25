@@ -5,11 +5,16 @@
 // peers_json/self_json/errmsg/close) so the C++ MeshBackend binds one symbol set
 // regardless of which shim the loader dlopen'd (HLD §5.2). mesh_kind() reports 2.
 //
-// Streams are handed to C as OS fds via the same socketpair bridge as ts_shim.
+// Streams are handed to C as OS socket handles via the same local stream pair as
+// ts_shim (see shim/meshpair).
 package main
 
 /*
 #include <stdlib.h>
+#include <stdint.h>
+
+// Must match `mesh_stream` in ../mesh_shim.h: fd on Unix, Winsock SOCKET on Windows.
+typedef uintptr_t mesh_stream;
 */
 import "C"
 
@@ -20,12 +25,13 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 	"unsafe"
 
+	"github.com/DataZooDE/erpl-tunnel/shim/meshpair"
 	nbembed "github.com/netbirdio/netbird/client/embed"
-	"golang.org/x/sys/unix"
 )
 
 type node struct {
@@ -136,7 +142,7 @@ func mesh_up(h C.long) C.int {
 			n.mu.Unlock()
 			return 1
 		}
-		statePath = d + "/state.json"
+		statePath = filepath.Join(d, "state.json")
 	}
 	opts := nbembed.Options{
 		DeviceName:    n.hostname,
@@ -182,7 +188,7 @@ func bridge(local net.Conn, mesh net.Conn) {
 }
 
 //export mesh_dial
-func mesh_dial(h C.long, host *C.char, port C.int, fdOut *C.int) C.int {
+func mesh_dial(h C.long, host *C.char, port C.int, streamOut *C.mesh_stream) C.int {
 	n := get(h)
 	if n == nil {
 		return 1
@@ -194,17 +200,10 @@ func mesh_dial(h C.long, host *C.char, port C.int, fdOut *C.int) C.int {
 	if !up || client == nil {
 		return 1
 	}
-	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM, 0)
+	// One end goes to C, the other is bridged in Go. See shim/meshpair.
+	raw, goConn, err := meshpair.New()
 	if err != nil {
-		n.setErr(fmt.Errorf("NetBird: socketpair failed: %w", err))
-		return 1
-	}
-	goFile := os.NewFile(uintptr(fds[1]), "mesh-bridge")
-	goConn, err := net.FileConn(goFile)
-	goFile.Close()
-	if err != nil {
-		unix.Close(fds[0])
-		n.setErr(fmt.Errorf("NetBird: FileConn failed: %w", err))
+		n.setErr(fmt.Errorf("NetBird: stream pair failed: %w", err))
 		return 1
 	}
 	addr := fmt.Sprintf("%s:%d", C.GoString(host), int(port))
@@ -212,13 +211,13 @@ func mesh_dial(h C.long, host *C.char, port C.int, fdOut *C.int) C.int {
 	meshConn, err := client.Dial(dctx, "tcp", addr)
 	dcancel()
 	if err != nil {
-		unix.Close(fds[0])
+		meshpair.CloseRaw(raw)
 		goConn.Close()
 		n.setErr(fmt.Errorf("NetBird: dial %s failed: %w", addr, err))
 		return 1
 	}
 	go bridge(goConn, meshConn)
-	*fdOut = C.int(fds[0])
+	*streamOut = C.mesh_stream(raw)
 	return 0
 }
 

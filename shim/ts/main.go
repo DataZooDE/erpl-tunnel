@@ -2,14 +2,18 @@
 // (../mesh_shim.h) over Tailscale's in-process userspace node, tsnet.
 //
 // Built with `go build -buildmode=c-shared`. The extension embeds the resulting
-// .so/.dylib as a byte blob and dlopen's it lazily on first Tailscale activation
-// (HLD §6.5). Handles are opaque ints into a Go-side registry; dialled streams
-// are handed to C as OS file descriptors via a socketpair bridge (the
-// libtailscale fd trick) so the C++ pump never touches Go memory.
+// .so/.dylib/.dll as a byte blob and loads it lazily on first Tailscale activation
+// (HLD §6.5). Handles are opaque ints into a Go-side registry; dialled streams are
+// handed to C as OS socket handles via a local stream pair (see shim/meshpair) so
+// the C++ pump never touches Go memory.
 package main
 
 /*
 #include <stdlib.h>
+#include <stdint.h>
+
+// Must match `mesh_stream` in ../mesh_shim.h: fd on Unix, Winsock SOCKET on Windows.
+typedef uintptr_t mesh_stream;
 */
 import "C"
 
@@ -25,7 +29,7 @@ import (
 	"time"
 	"unsafe"
 
-	"golang.org/x/sys/unix"
+	"github.com/DataZooDE/erpl-tunnel/shim/meshpair"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tsnet"
 )
@@ -185,7 +189,7 @@ func bridge(local net.Conn, mesh net.Conn) {
 }
 
 //export mesh_dial
-func mesh_dial(h C.long, host *C.char, port C.int, fdOut *C.int) C.int {
+func mesh_dial(h C.long, host *C.char, port C.int, streamOut *C.mesh_stream) C.int {
 	n := get(h)
 	if n == nil {
 		return 1
@@ -198,18 +202,10 @@ func mesh_dial(h C.long, host *C.char, port C.int, fdOut *C.int) C.int {
 		return 1
 	}
 
-	// AF_UNIX socketpair: fds[0] handed to C, fds[1] bridged in Go.
-	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM, 0)
+	// One end goes to C, the other is bridged in Go. See shim/meshpair.
+	raw, goConn, err := meshpair.New()
 	if err != nil {
-		n.setErr(fmt.Errorf("Tailscale: socketpair failed: %w", err))
-		return 1
-	}
-	goFile := os.NewFile(uintptr(fds[1]), "mesh-bridge")
-	goConn, err := net.FileConn(goFile)
-	goFile.Close() // net.FileConn dup'd the fd
-	if err != nil {
-		unix.Close(fds[0])
-		n.setErr(fmt.Errorf("Tailscale: FileConn failed: %w", err))
+		n.setErr(fmt.Errorf("Tailscale: stream pair failed: %w", err))
 		return 1
 	}
 
@@ -218,14 +214,14 @@ func mesh_dial(h C.long, host *C.char, port C.int, fdOut *C.int) C.int {
 	meshConn, err := srv.Dial(dctx, "tcp", addr)
 	dcancel()
 	if err != nil {
-		unix.Close(fds[0])
+		meshpair.CloseRaw(raw)
 		goConn.Close()
 		n.setErr(fmt.Errorf("Tailscale: dial %s failed: %w", addr, err))
 		return 1
 	}
 
 	go bridge(goConn, meshConn)
-	*fdOut = C.int(fds[0])
+	*streamOut = C.mesh_stream(raw)
 	return 0
 }
 

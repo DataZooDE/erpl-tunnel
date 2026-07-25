@@ -3,10 +3,14 @@
  * (ts_shim over Tailscale tsnet, nb_shim over NetBird client/embed).
  *
  * The C++ MeshBackend binds ONE set of function pointers from whichever shim the
- * loader dlopen'd (HLD §5.2). Handles are opaque ints (indices into a Go-side
- * registry — Go pointers must never cross into C). Streams are handed back as OS
- * file descriptors so the C++ port-forward engine pumps bytes with read()/write()
- * and never touches Go memory.
+ * loader dlopen'd/LoadLibrary'd (HLD §5.2). Handles are opaque ints (indices into
+ * a Go-side registry — Go pointers must never cross into C). Streams are handed
+ * back as OS socket handles so the C++ port-forward engine pumps bytes itself and
+ * never touches Go memory.
+ *
+ * Nothing but integers, caller-owned buffers and OS handles crosses this boundary:
+ * no malloc/free across it, no FILE*, no C++ objects. That is what makes it safe
+ * for a mingw-built shim to be loaded by an MSVC-built host on Windows.
  *
  * All functions are thread-safe and return 0 on success, non-zero on error; call
  * mesh_errmsg() for the last human-readable error on that node.
@@ -15,6 +19,7 @@
 #define ERPL_TUNNEL_MESH_SHIM_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,6 +30,17 @@ extern "C" {
 #define MESH_KIND_NETBIRD   2
 
 typedef long mesh_node; /* opaque handle; >0 valid, <=0 invalid */
+
+/* An OS stream handle: a file descriptor on Unix, a Winsock SOCKET on Windows.
+ * uintptr_t because a Win64 SOCKET is UINT_PTR and does not fit an int. Opaque
+ * except that it is a connected, blocking, bidirectional byte stream the caller
+ * OWNS and releases (close() / closesocket()). A half-close by the peer shows up
+ * as recv() returning 0. There are never residual bytes buffered on it at handoff.
+ *
+ * Windows note: use recv/send, never read/write — the latter only work on CRT file
+ * descriptors, not on SOCKETs. */
+typedef uintptr_t mesh_stream;
+#define MESH_STREAM_INVALID ((mesh_stream)-1)
 
 /* Which mesh is this shim? (1=tailscale, 2=netbird). Callable before mesh_new. */
 int mesh_kind(void);
@@ -44,10 +60,11 @@ int mesh_set_bool(mesh_node node, const char *key, int val);
  * Idempotent: calling again on an up node is a no-op success. */
 int mesh_up(mesh_node node);
 
-/* Dial host:port on the mesh. On success writes a connected OS fd to *fd_out that
- * the caller owns (close() to release). The fd is one end of a socketpair whose
- * other end a goroutine bridges to the userspace mesh connection. */
-int mesh_dial(mesh_node node, const char *host, int port, int *fd_out);
+/* Dial host:port on the mesh. On success writes a connected stream handle to
+ * *stream_out that the caller owns. It is one end of a local stream pair (an
+ * AF_UNIX socketpair on Unix, a loopback TCP pair on Windows) whose other end a
+ * goroutine bridges to the userspace mesh connection. */
+int mesh_dial(mesh_node node, const char *host, int port, mesh_stream *stream_out);
 
 /* Serialise the peer-local netmap/status as a JSON array of
  *   {backend, host_name, dns_name, mesh_ip, tags, online}

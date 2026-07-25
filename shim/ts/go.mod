@@ -9,6 +9,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
+	github.com/DataZooDE/erpl-tunnel/shim/meshpair v0.0.0
 	github.com/akutz/memconn v0.1.0 // indirect
 	github.com/alexbrainman/sspi v0.0.0-20231016080023-1a75b4708caa // indirect
 	github.com/coder/websocket v1.8.12 // indirect
@@ -51,3 +52,5 @@ require (
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
 	gvisor.dev/gvisor v0.0.0-20260224225140-573d5e7127a8 // indirect
 )
+
+replace github.com/DataZooDE/erpl-tunnel/shim/meshpair => ../meshpair

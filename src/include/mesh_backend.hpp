@@ -55,8 +55,9 @@ public:
     // Throws an actionable exception on failure (bad key, control unreachable, …).
     void EnsureUp();
 
-    // Dial host:port on the mesh; returns a connected OS fd (caller owns/closes).
-    int Dial(const std::string &host, int port);
+    // Dial host:port on the mesh; returns a connected OS stream handle the caller
+    // owns and closes (fd on Unix, Winsock SOCKET on Windows).
+    MeshStream Dial(const std::string &host, int port);
 
     // Peer-local status as JSON (array for peers, object for self). Brings the
     // node up if needed.

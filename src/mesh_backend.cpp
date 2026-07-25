@@ -84,14 +84,14 @@ void MeshBackend::EnsureUp() {
     up_ = true;
 }
 
-int MeshBackend::Dial(const std::string &host, int port) {
+MeshStream MeshBackend::Dial(const std::string &host, int port) {
     EnsureUp();
     std::lock_guard<std::mutex> lock(mu_);
-    int fd = -1;
-    if (api_->dial(node_, host.c_str(), port, &fd) != 0 || fd < 0) {
+    MeshStream stream = kMeshStreamInvalid;
+    if (api_->dial(node_, host.c_str(), port, &stream) != 0 || stream == kMeshStreamInvalid) {
         throw IOException("Tunnel: " + LastError());
     }
-    return fd;
+    return stream;
 }
 
 // Cap the buffer the shim can ask us to allocate. `need` crosses the C ABI from the

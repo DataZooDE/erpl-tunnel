@@ -1,6 +1,6 @@
 module github.com/DataZooDE/erpl-tunnel/shim/nb
 
-go 1.25.5
+go 1.26.4
 
 require (
 	github.com/netbirdio/netbird v0.74.7
@@ -9,6 +9,7 @@ require (
 
 require (
 	cunicu.li/go-rosenpass v0.5.42 // indirect
+	github.com/DataZooDE/erpl-tunnel/shim/meshpair v0.0.0
 	github.com/DeRuina/timberjack v1.4.2 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/aws/aws-sdk-go-v2 v1.38.3 // indirect
@@ -139,3 +140,5 @@ replace github.com/dexidp/dex => github.com/netbirdio/dex v0.244.1-0.20260512110
 replace github.com/dexidp/dex/api/v2 => github.com/netbirdio/dex/api/v2 v2.0.0-20260512110716-8d70ad8647c1
 
 replace github.com/mailru/easyjson => github.com/netbirdio/easyjson v0.9.0
+
+replace github.com/DataZooDE/erpl-tunnel/shim/meshpair => ../meshpair

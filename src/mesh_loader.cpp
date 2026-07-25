@@ -18,11 +18,11 @@ namespace duckdb {
 // linked in only for the mesh backends this build bundles (MESH_BACKEND flag).
 #ifdef MESH_HAVE_TAILSCALE
 extern "C" const unsigned char ts_shim_blob[];
-extern "C" const unsigned long ts_shim_blob_len;
+extern "C" const uint64_t ts_shim_blob_len;
 #endif
 #ifdef MESH_HAVE_NETBIRD
 extern "C" const unsigned char nb_shim_blob[];
-extern "C" const unsigned long nb_shim_blob_len;
+extern "C" const uint64_t nb_shim_blob_len;
 #endif
 
 std::mutex MeshLoader::mutex_;
@@ -66,7 +66,7 @@ MeshKind MeshLoader::ActiveKind() {
     return active_kind_;
 }
 
-static void GetBlob(MeshKind kind, const unsigned char *&data, unsigned long &len) {
+static void GetBlob(MeshKind kind, const unsigned char *&data, uint64_t &len) {
     data = nullptr;
     len = 0;
 #ifdef MESH_HAVE_TAILSCALE
@@ -113,7 +113,7 @@ const MeshApi &MeshLoader::Activate(MeshKind kind) {
 
     // First activation: extract the embedded blob to a private temp file and dlopen it.
     const unsigned char *blob = nullptr;
-    unsigned long blob_len = 0;
+    uint64_t blob_len = 0;
     GetBlob(kind, blob, blob_len);
     if (blob == nullptr || blob_len == 0) {
         throw InternalException("Tunnel: mesh shim blob missing for " + std::string(MeshKindName(kind)));
@@ -134,7 +134,9 @@ const MeshApi &MeshLoader::Activate(MeshKind kind) {
 
     void *h = dlopen(tmpl, RTLD_NOW | RTLD_LOCAL);
     if (h == nullptr) {
-        std::string err = dlerror() ? dlerror() : "unknown";
+        // Note: dlerror() clears the error, so it must be read exactly once.
+        const char *derr = dlerror();
+        std::string err = derr ? derr : "unknown";
         ::remove(tmpl);
         throw IOException("Tunnel: failed to load the " + std::string(MeshKindName(kind)) +
                           " shim: " + err);
@@ -156,7 +158,7 @@ const MeshApi &MeshLoader::Activate(MeshKind kind) {
     api.set_str = reinterpret_cast<int (*)(long, const char *, const char *)>(resolve("mesh_set_str"));
     api.set_bool = reinterpret_cast<int (*)(long, const char *, int)>(resolve("mesh_set_bool"));
     api.up = reinterpret_cast<int (*)(long)>(resolve("mesh_up"));
-    api.dial = reinterpret_cast<int (*)(long, const char *, int, int *)>(resolve("mesh_dial"));
+    api.dial = reinterpret_cast<int (*)(long, const char *, int, MeshStream *)>(resolve("mesh_dial"));
     api.peers_json = reinterpret_cast<int (*)(long, char *, size_t, size_t *)>(resolve("mesh_peers_json"));
     api.self_json = reinterpret_cast<int (*)(long, char *, size_t, size_t *)>(resolve("mesh_self_json"));
     api.errmsg = reinterpret_cast<int (*)(long, char *, size_t)>(resolve("mesh_errmsg"));
