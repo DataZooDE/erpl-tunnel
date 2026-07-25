@@ -187,6 +187,99 @@ jobs:
           cmake --build build-blob
           .\build-blob\blob_probe.exe
 
+  # The last unproven link in the Windows port. The standalone spike above shows Go
+  # runs under an MSVC host, and the distribution pipeline shows the extension
+  # builds with both shims embedded — but neither exercises the actual runtime path
+  # INSIDE DuckDB: pull the blob out of the COFF object, write it to the
+  # %LOCALAPPDATA% cache, LoadLibraryW it, and run Go. This job does exactly that.
+  mesh-runtime-windows:
+    name: Mesh activates at runtime (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.26.4' }
+      - uses: msys2/setup-msys2@v2
+        id: msys2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc
+          path-type: inherit
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Set up vcpkg
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$env:USERPROFILE\vcpkg"
+          & "$env:USERPROFILE\vcpkg\bootstrap-vcpkg.bat"
+          "VCPKG_ROOT=$env:USERPROFILE\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Build (MESH_BACKEND=both, mesh required)
+        shell: pwsh
+        env:
+          MESH_BACKEND: both
+          GEN: ninja
+        run: |
+          $candidates = @(
+            "${{ steps.msys2.outputs.msys2-location }}\mingw64\bin\x86_64-w64-mingw32-gcc.exe",
+            "C:\mingw64\bin\x86_64-w64-mingw32-gcc.exe",
+            "C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe"
+          )
+          foreach ($c in $candidates) { if (Test-Path $c) { $env:ERPL_MINGW_CC = $c; break } }
+          if (-not $env:ERPL_MINGW_CC) { throw "no mingw-w64 gcc found" }
+          Write-Host "ERPL_MINGW_CC=$env:ERPL_MINGW_CC"
+          make release
+      - name: Mesh SQL surface is present, and Go actually activates
+        shell: pwsh
+        run: |
+          $ext = "build/release/repository/v1.5.4/windows_amd64/erpl_tunnel.duckdb_extension"
+          if (-not (Test-Path $ext)) {
+            $ext = (Get-ChildItem -Recurse -Filter erpl_tunnel.duckdb_extension build/release |
+                    Select-Object -First 1).FullName
+          }
+          Write-Host "extension: $ext"
+          $duckdb = "build/release/duckdb.exe"
+
+          # 1. the mesh SQL surface must exist in this build (it is #ifdef'd out of
+          #    SSH-only builds, so this also proves mesh was really compiled in).
+          $sql = @"
+          LOAD '$($ext -replace '\\','/')';
+          SELECT function_name FROM duckdb_functions() WHERE function_name LIKE 'tunnel_%' ORDER BY 1;
+          "@
+          $out = $sql | & $duckdb -unsigned | Out-String
+          Write-Host $out
+          foreach ($fn in @('tunnel_mesh_activate','tunnel_peers','tunnel_self')) {
+            if ($out -notmatch [regex]::Escape($fn)) { throw "missing $fn — mesh was not compiled in" }
+          }
+
+          # 2. THE point of this job: activating a mesh extracts the embedded shim,
+          #    LoadLibraryW's it and starts the Go runtime, all inside DuckDB.
+          $sql2 = @"
+          LOAD '$($ext -replace '\\','/')';
+          PRAGMA tunnel_mesh_activate('tailscale');
+          "@
+          $out2 = $sql2 | & $duckdb -unsigned | Out-String
+          Write-Host $out2
+          if ($out2 -notmatch 'tailscale') { throw "tunnel_mesh_activate('tailscale') did not report success: $out2" }
+          if ($out2 -match 'Error') { throw "tunnel_mesh_activate failed: $out2" }
+
+          # 3. the shim really was written to the per-user cache
+          $cache = "$env:LOCALAPPDATA\DataZoo\erpl-tunnel\shims"
+          if (-not (Test-Path $cache)) { throw "shim cache $cache was never created" }
+          Get-ChildItem -Recurse $cache | ForEach-Object { Write-Host "cached: $($_.FullName)" }
+
+          # 4. one Go runtime per process: the second, different mesh must be refused
+          $sql3 = @"
+          LOAD '$($ext -replace '\\','/')';
+          PRAGMA tunnel_mesh_activate('tailscale');
+          PRAGMA tunnel_mesh_activate('netbird');
+          "@
+          $out3 = $sql3 | & $duckdb -unsigned | Out-String
+          Write-Host $out3
+          if ($out3 -notmatch 'start a new session') {
+            throw "the single-mesh latch did not refuse the second mesh: $out3"
+          }
+          Write-Host "MESH-RUNTIME-WINDOWS OK - Go mesh activates inside DuckDB on Windows"
+
   mesh-e2e:
     name: Lazy-load, latch & Headscale enrollment
     runs-on: ubuntu-latest

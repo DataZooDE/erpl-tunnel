@@ -51,9 +51,9 @@ LOAD erpl_tunnel;
 > it lands, [build from source](#-build-from-source) and `LOAD` the local
 > `erpl_tunnel.duckdb_extension` (start DuckDB with `-unsigned`).
 
-Platforms: **Linux** and **macOS** get all three backends (SSH + Tailscale +
-NetBird). **Windows** gets SSH tunneling (the mesh backends are Unix-only). One
-extension, the right backends for your platform.
+Platforms: **Linux**, **macOS** and **Windows** all get the three backends
+(SSH + Tailscale + NetBird). musl and wasm builds are SSH-only. One extension,
+the right backends for your platform.
 
 ## ⚡ Quick start
 
@@ -116,8 +116,8 @@ More detail per backend, plus how to get the keys and run your own control serve
 | `tunnel_self(secret)` † | table | This node's own mesh identity. |
 | `tunnel_mesh_activate('tailscale'\|'netbird')` † | pragma | *Advanced* — force-load a mesh backend now. Normally automatic on first `tunnel_create`/`tunnel_peers`; use only to surface auth errors early or pin the one mesh for this process. |
 
-† Present only in **mesh-enabled builds** (the published Linux/macOS artifact); not
-on Windows/musl SSH-only builds. Check what your build has with
+† Present only in **mesh-enabled builds** — the published Linux, macOS and Windows
+artifacts; not in musl/wasm SSH-only builds. Check what your build has with
 `SELECT function_name FROM duckdb_functions() WHERE function_name LIKE 'tunnel_%';`.
 
 `tunnel_create` binds `127.0.0.1` by default; pass `bind_all = true` for all

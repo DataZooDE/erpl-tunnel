@@ -20,7 +20,7 @@ MESH_BACKEND=netbird   make release   # SSH + NetBird
 MESH_BACKEND=both      make release   # all three (the published default)
 ```
 
-The published extension is `both` on Linux/macOS and `ssh` on Windows/musl —
+The published extension is `both` on Linux/macOS/Windows and `ssh` on musl/wasm —
 selected automatically per platform (`extension_config.cmake`). Override anytime
 with the env var above.
 
@@ -30,8 +30,13 @@ with the env var above.
 - **Go** — only for mesh builds. You don't need it preinstalled: the build
   **bootstraps** a pinned, checksum-verified Go if your system Go is missing or too
   old (`cmake/bootstrap_go.cmake`). SSH-only builds need no Go at all.
-- **glibc Linux or macOS** for the mesh backends (Go cgo `c-shared` is glibc-only;
-  musl is unsupported). Windows/musl build SSH-only.
+- **glibc Linux, macOS or Windows** for the mesh backends. musl is unsupported
+  (Go cgo `c-shared` needs glibc), so musl and wasm build SSH-only.
+- **Windows additionally needs a mingw-w64 gcc** — cgo cannot use MSVC, so the Go
+  shims are built with mingw while the extension itself stays MSVC; the two meet
+  only over a plain C ABI and OS socket handles. The build finds a toolchain
+  automatically (or set `ERPL_MINGW_CC`), and falls back to an SSH-only build with
+  a warning if none is present.
 
 ## Testing
 
