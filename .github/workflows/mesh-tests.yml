@@ -476,7 +476,7 @@ jobs:
         run: make nb_seeder
       # Self-hosted NetBird (management IdpManagerConfig:none + seeded store, signal,
       # relay). Both nodes force NetBird's userspace firewall so the ACL applies
-      # without the ip_set_hash_net kernel module (see docs/TIER2_MESH_DATAPLANE_TEST.md).
+      # without the ip_set_hash_net kernel module (see docs/guides/troubleshooting.md).
       - name: NetBird data-plane test
         run: |
           BASE_IMAGE=ubuntu:24.04 \
