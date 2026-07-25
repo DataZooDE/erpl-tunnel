@@ -245,7 +245,8 @@ jobs:
           LOAD '$($ext -replace '\\','/')';
           SELECT function_name FROM duckdb_functions() WHERE function_name LIKE 'tunnel_%' ORDER BY 1;
           "@
-          $out = $sql | & $duckdb -unsigned 2>&1 | Out-String
+          $sql | & $duckdb -unsigned > out0.txt 2>&1
+          $out = Get-Content out0.txt -Raw
           Write-Host $out
           foreach ($fn in @('tunnel_mesh_activate','tunnel_peers','tunnel_self')) {
             if ($out -notmatch [regex]::Escape($fn)) { throw "missing $fn — mesh was not compiled in" }
@@ -257,7 +258,8 @@ jobs:
           LOAD '$($ext -replace '\\','/')';
           PRAGMA tunnel_mesh_activate('tailscale');
           "@
-          $out2 = $sql2 | & $duckdb -unsigned 2>&1 | Out-String
+          $sql2 | & $duckdb -unsigned > out2.txt 2>&1
+          $out2 = Get-Content out2.txt -Raw
           Write-Host $out2
           if ($out2 -notmatch 'tailscale') { throw "tunnel_mesh_activate('tailscale') did not report success: $out2" }
           if ($out2 -match 'Error') { throw "tunnel_mesh_activate failed: $out2" }
@@ -273,7 +275,8 @@ jobs:
           PRAGMA tunnel_mesh_activate('tailscale');
           PRAGMA tunnel_mesh_activate('netbird');
           "@
-          $out3 = $sql3 | & $duckdb -unsigned 2>&1 | Out-String
+          $sql3 | & $duckdb -unsigned > out3.txt 2>&1
+          $out3 = Get-Content out3.txt -Raw
           Write-Host $out3
           if ($out3 -notmatch 'start a new session') {
             throw "the single-mesh latch did not refuse the second mesh: $out3"
@@ -338,8 +341,7 @@ jobs:
         run: |
           BASE_IMAGE=ubuntu:24.04 \
           DUCKDB_BIN=build/release/duckdb \
-          test/integration/mesh_dataplane_tailscale.sh \
-            build/release/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+          make ts_dataplane
 
   netbird-dataplane:
     name: NetBird data plane (Tier 2, real WireGuard, no IdP)
@@ -368,5 +370,4 @@ jobs:
         run: |
           BASE_IMAGE=ubuntu:24.04 \
           DUCKDB_BIN=build/release/duckdb \
-          test/integration/mesh_dataplane_netbird.sh \
-            build/release/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+          make nb_dataplane
