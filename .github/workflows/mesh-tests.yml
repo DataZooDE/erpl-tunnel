@@ -285,6 +285,10 @@ jobs:
             throw "the single-mesh latch did not refuse the second mesh: $out3"
           }
           Write-Host "MESH-RUNTIME-WINDOWS OK - Go mesh activates inside DuckDB on Windows"
+          # The last native command was duckdb exiting non-zero on the latch error we
+          # deliberately provoke, and the pwsh wrapper propagates $LASTEXITCODE. Every
+          # assertion above passed, so say so explicitly.
+          exit 0
 
   mesh-e2e:
     name: Lazy-load, latch & Headscale enrollment
