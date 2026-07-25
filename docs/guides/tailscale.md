@@ -21,22 +21,33 @@ login. You need a Tailscale account and a tailnet; the free plan is enough.
    | **Reusable** | **on** | otherwise the key is consumed by the first node and every later session fails to enroll |
    | **Ephemeral** | **on** | the node disappears from your machine list shortly after DuckDB exits, instead of piling up dead entries |
    | **Expiration** | your call (max 90 days) | the key stops working after this; the secret then needs a new one |
-   | **Tags** | **leave empty for your first run** | see the warning below |
+   | **Tags** | `tag:erpl-tunnel` (+ your own), or empty | tags are granted from the key — an untagged key means an untagged node; see below |
 
 5. Click **Generate key** and copy it — it is shown **once**. It looks like
    `tskey-auth-kXXXXXXCNTRL-XXXXXXXXXXXXXXXXXXXXXX`.
 
-> **Leave tags off until the ACL is ready.** A tagged auth key is rejected unless
-> that tag has a `tagOwners` entry in your tailnet ACL, and the failure surfaces
-> as a generic enrollment error. Get an untagged key working first, then — if you
-> want tags — add to **Access controls**:
+> **Tags come from the KEY, not from the client.** The extension always advertises
+> `tag:erpl-tunnel` (plus anything in the secret's `tags`), but advertising is only
+> a *request* — the control plane decides. Enrol with an **untagged** key and your
+> node registers fine and shows **no tags at all**, which is the usual reason a
+> node looks untagged in the admin console.
 >
-> ```json
-> "tagOwners": { "tag:duckdb": ["autogroup:admin"] }
-> ```
+> To actually get tags, do both:
 >
-> and regenerate the key with `tag:duckdb` selected. Tagged nodes also do not
-> expire, which is usually what you want for a long-lived service.
+> 1. In **Access controls**, own the tags:
+>
+>    ```json
+>    "tagOwners": {
+>      "tag:erpl-tunnel":  ["autogroup:admin"],
+>      "tag:duckdb-export": ["autogroup:admin"]
+>    }
+>    ```
+>
+> 2. Regenerate the auth key with those tags selected, and set any extras on the
+>    secret: `tags 'duckdb-export'` (the `tag:` prefix is added for you).
+>
+> Tagged nodes also do not expire, which is usually what you want for a long-lived
+> service. Leave tags off for a first run if you just want something working.
 
 **Self-hosting with Headscale?** Generate the key with
 `headscale preauthkeys create --user <user> --reusable --expiration 24h` and set
@@ -132,6 +143,24 @@ peer needs it, and it must be at least 4 characters.
 
 Tailnet ACLs still apply: peers that cannot reach your node cannot reach the
 exported port either.
+
+### Identifying nodes and their ports
+
+Tags are fixed when a node **registers**, and exports happen afterwards, so there
+is no per-port tag — a tag cannot appear when you call `tunnel_export`. Identify a
+node by its `hostname` and read the ports from it:
+
+```sql
+CREATE SECRET ts (TYPE tunnel, backend 'tailscale', auth_key 'tskey-auth-…',
+    hostname 'duckdb-sap-gw', tags 'duckdb-export');
+
+SELECT direction, local_port, remote_port, status FROM tunnels();
+```
+
+`hostname` is what shows in the admin console and in MagicDNS, so one descriptive
+name per role (`duckdb-sap-gw`, `duckdb-lake-eu`) beats trying to encode ports.
+If you do want a tag per port, the ports must be known when the secret is created
+and each tag needs its own `tagOwners` entry: `tags 'duckdb-9494,duckdb-8080'`.
 
 ### Walkthrough: a SAP gateway on the tailnet
 

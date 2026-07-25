@@ -60,6 +60,11 @@ jobs:
       - name: go test (race)
         working-directory: shim/meshpair
         run: go test -race -count=2 ./...
+      # The tag parser and the tag-rejection matcher. `tags` was a silent no-op
+      # before, so these pin that it stays wired.
+      - name: go test ts shim (race)
+        working-directory: shim/ts
+        run: go test -race -count=2 -run 'TestParseTags|TestIsTagRejection' ./...
 
   # SSH is the one backend that ships on every platform, and until now nothing in CI
   # exercised it: the live-SSH sqllogictests self-skip without ERPL_SSH_HOST, so every

@@ -107,6 +107,13 @@ hs users create duckdb >/dev/null 2>&1 || true
 UID_NUM="$(hs users list -o json 2>/dev/null | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')"; UID_NUM="${UID_NUM:-1}"
 KEY="$(hs preauthkeys create --user "$UID_NUM" --reusable --expiration 1h 2>/dev/null | tr -d '[:space:]')"
 [[ ${#KEY} -ge 20 ]] || { echo "FAIL: could not mint preauth key"; exit 1; }
+# A SEPARATE, TAGGED key for node A. Tags are granted by the control plane, and the
+# auth key is what carries them — client-side AdvertiseTags alone is only a request
+# and an untagged key yields an untagged node. This mirrors what a user must do on
+# Tailscale cloud: generate a TAGGED auth key.
+KEY_A="$(hs preauthkeys create --user "$UID_NUM" --reusable --expiration 1h \
+  --tags tag:erpl-tunnel,tag:duckdb-export 2>/dev/null | tr -d '[:space:]')"
+[[ ${#KEY_A} -ge 20 ]] || { echo "FAIL: could not mint a tagged preauth key"; exit 1; }
 
 echo "== 3. node B's tailscale daemon (kernel TUN) =="
 echo "TS_AUTHKEY=$KEY" > "$HS/.env"
@@ -125,7 +132,7 @@ docker run -d --name erpl-node-a --network "$NET" \
   -v "$DUCKDB_BIN":/duckdb:ro \
   -v "$EXTS":/exts:ro \
   -v "$HS/nodea_quack_entrypoint.sh":/nodea.sh:ro \
-  -e TS_AUTHKEY="$KEY" -e QUACK_TOKEN="$QUACK_TOKEN" \
+  -e TS_AUTHKEY="$KEY_A" -e QUACK_TOKEN="$QUACK_TOKEN" \
   "$BASE_IMAGE" bash /nodea.sh >/dev/null
 
 A_IP=""
@@ -153,6 +160,25 @@ else
   docker logs erpl-node-a 2>&1 | tail -20; exit 1
 fi
 
+# Two exports must live on ONE node: same mesh address, two ports.
+EROW="$(docker logs erpl-node-a 2>&1 | grep -oE 'NODEA_EXPORTS=[0-9]+\|[0-9]+' | head -1)"
+if [[ "$EROW" == "NODEA_EXPORTS=2|1" ]]; then
+  echo "PASS: 2 exports share 1 mesh identity ($EROW)"
+else
+  echo "FAIL: expected 2 exports on 1 address, got '$EROW'"
+  docker logs erpl-node-a 2>&1 | tail -20; exit 1
+fi
+
+# tags were parsed and then thrown away before, so nodes registered untagged.
+# Assert the control plane GRANTED both the always-on tag and the secret's own.
+TAGS="$(docker logs erpl-node-a 2>&1 | grep -oE 'NODEA_TAGS=[^ ]*' | head -1)"
+if [[ "$TAGS" == *"tag:erpl-tunnel"* && "$TAGS" == *"tag:duckdb-export"* ]]; then
+  echo "PASS: control plane granted the advertised tags ($TAGS)"
+else
+  echo "FAIL: tags missing or not granted: '$TAGS'"
+  docker logs erpl-node-a 2>&1 | tail -20; exit 1
+fi
+
 echo "== 5. node B: ATTACH across the tailnet and run a real query =="
 # DISABLE_SSL is required — the quack client defaults to HTTPS for a non-local
 # address, and WireGuard already encrypts this hop.
@@ -169,6 +195,21 @@ B_OUT="$(docker run --rm --network "container:erpl-ts-peer" \
 rc=$?
 set -e
 echo "$B_OUT" | tail -5
+
+# The second port must serve the same DuckDB, not just exist.
+B2="$(docker run --rm --network "container:erpl-ts-peer" \
+  -v "$DUCKDB_BIN":/duckdb:ro -v "$EXTS":/exts:ro \
+  "$BASE_IMAGE" /duckdb -noheader -list -c "
+    SET extension_directory='/exts';
+    LOAD httpfs; LOAD quack;
+    ATTACH 'quack:$A_IP:9495' AS remote2 (TYPE quack, TOKEN '$QUACK_TOKEN', DISABLE_SSL true);
+    SELECT 'P2=' || count(*) FROM remote2.main.observations;
+  " 2>&1)"
+if echo "$B2" | grep -q "P2=3"; then
+  echo "PASS: the second exported port serves the same DuckDB"
+else
+  echo "FAIL: second exported port did not serve: $(echo "$B2" | tail -2)"; exit 1
+fi
 
 if echo "$B_OUT" | grep -q "ROWS=3 NAME=gamma"; then
   echo "PASS: node B queried node A's DuckDB across the tailnet through tunnel_export"

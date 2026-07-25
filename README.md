@@ -265,8 +265,10 @@ CREATE SECRET s (TYPE ssh_tunnel, host '…', port 22, user '…',
     password '…' /* or */ private_key_path '…', passphrase '…');
 
 -- Tailscale (TYPE tunnel, backend 'tailscale')
+-- Nodes always advertise tag:erpl-tunnel; `tags` adds more. Tags are GRANTED from
+-- the auth key, so an untagged key yields an untagged node (see the guide).
 CREATE SECRET s (TYPE tunnel, backend 'tailscale', auth_key '…',
-    hostname '…', tags 'tag:duckdb', control_url '' /* empty = Tailscale cloud */,
+    hostname '…', tags 'duckdb-export', control_url '' /* empty = Tailscale cloud */,
     ephemeral true, state_dir '…');
 
 -- NetBird (TYPE tunnel, backend 'netbird')

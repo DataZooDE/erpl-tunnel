@@ -22,7 +22,7 @@ LOAD '/erpl_tunnel.duckdb_extension';
 CREATE TABLE observations AS SELECT * FROM (VALUES (1,'alpha'),(2,'beta'),(3,'gamma')) t(id,name);
 CREATE SECRET a (TYPE tunnel, backend 'tailscale', auth_key '${TS_AUTHKEY}',
     control_url 'http://headscale:8080', hostname 'erpl-node-a',
-    state_dir '/tmp/tsstate', ephemeral true);
+    tags 'duckdb-export', state_dir '/tmp/tsstate', ephemeral true);
 SELECT 'NODEA_IP=' || mesh_ip AS m FROM tunnel_self(secret='a');
 SQL
 
@@ -43,6 +43,10 @@ cat >&9 <<SQL
 CALL quack_serve('quack:127.0.0.1:9494', token => '${QUACK_TOKEN}',
     allow_other_hostname => true);
 PRAGMA tunnel_export(secret='a', local_port=9494);
+-- A SECOND export from the same node: multi-port has to work on ONE mesh identity,
+-- which is exactly what the old per-call node construction broke (each export got
+-- its own node and its own address).
+PRAGMA tunnel_export(secret='a', local_port=9494, remote_port=9495);
 SELECT 'NODEA_EXPORTING' AS m;
 SQL
 
@@ -53,10 +57,20 @@ grep -q NODEA_EXPORTING /tmp/a.out || { echo "NODEA_FAIL export"; cat /tmp/a.out
 # empty one here means the export is reachable but undiscoverable.
 cat >&9 <<'SQL'
 SELECT 'NODEA_TUNNELS=' || direction || '|' || remote_host || '|' || remote_port AS m
+  FROM tunnels() WHERE direction = 'export' AND remote_port = 9494;
+SELECT 'NODEA_EXPORTS=' || count(*) || '|' || count(DISTINCT remote_host) AS m
   FROM tunnels() WHERE direction = 'export';
+-- The tags the CONTROL PLANE actually granted, not what we asked for. `tags` was a
+-- silent no-op before, so this is the assertion that it is really applied.
+SELECT 'NODEA_TAGS=[' || coalesce(array_to_string(list_sort(tags), ','), '') || ']' AS m
+  FROM tunnel_self(secret='a');
 SQL
-for _ in $(seq 1 20); do grep -q "NODEA_TUNNELS=" /tmp/a.out && break; sleep 1; done
+# Wait for BOTH marker rows: /tmp/a.out is inside the container, so anything the
+# driver needs must be echoed to stdout where `docker logs` can see it.
+for _ in $(seq 1 30); do grep -q "NODEA_TAGS=" /tmp/a.out && break; sleep 1; done
 grep -oE "NODEA_TUNNELS=[^ ]*" /tmp/a.out | head -1 || true
+grep -oE "NODEA_EXPORTS=[0-9]+.[0-9]+" /tmp/a.out | head -1 || true
+grep -oE "NODEA_TAGS=[^ ]*" /tmp/a.out | head -1 || true
 
 echo "NODEA_READY"
 

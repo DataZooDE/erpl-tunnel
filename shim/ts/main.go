@@ -156,6 +156,67 @@ func mesh_set_bool(h C.long, key *C.char, val C.int) C.int {
 	return 0
 }
 
+// The tag every erpl-tunnel node advertises, so all of them are identifiable in
+// the admin console regardless of what else the user set.
+//
+// IMPORTANT: this makes a tagOwners entry MANDATORY. A tailnet whose ACL does not
+// own this tag will refuse to register the node — see the error mesh_up returns.
+// Your ACL needs, at minimum:
+//
+//	"tagOwners": { "tag:erpl-tunnel": ["autogroup:admin"] }
+const erplTunnelTag = "tag:erpl-tunnel"
+
+// parseTags turns the secret's comma/space-separated `tags` value into the form
+// Tailscale expects, and always includes erplTunnelTag. Every tag must carry the
+// "tag:" prefix, so we add it when the user left it off — "duckdb" and
+// "tag:duckdb" mean the same thing to a reader.
+//
+// The `tags` field used to be stored and never read, so nodes registered untagged
+// however carefully it was set; that silent no-op is what this replaces.
+func parseTags(raw string) []string {
+	out := []string{erplTunnelTag}
+	seen := map[string]bool{erplTunnelTag: true}
+	if strings.TrimSpace(raw) == "" {
+		return out
+	}
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == ';'
+	})
+	for _, f := range fields {
+		t := strings.TrimSpace(f)
+		if t == "" {
+			continue
+		}
+		if !strings.HasPrefix(t, "tag:") {
+			t = "tag:" + t
+		}
+		if !seen[t] {
+			seen[t] = true
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// isTagRejection spots the control server refusing our advertised tags. The
+// wording has varied across control-plane versions and Headscale differs from
+// Tailscale, so match on the stable parts rather than one exact sentence.
+func isTagRejection(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	if !strings.Contains(msg, "tag") {
+		return false
+	}
+	for _, s := range []string{"not permitted", "invalid", "not allowed", "unauthorized", "requested tags"} {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
+}
+
 //export mesh_up
 func mesh_up(h C.long) C.int {
 	n := get(h)
@@ -183,12 +244,18 @@ func mesh_up(h C.long) C.int {
 		}
 		dir = d
 	}
+	// The `tags` secret field used to be stored here and never read, so it was a
+	// silent no-op: nodes registered untagged however carefully you set it.
+	// tsnet applies AdvertiseTags only when the node starts, and the control
+	// server still has to allow each tag (it needs a matching tagOwners ACL
+	// entry) — advertising is a request, not a guarantee.
 	srv := &tsnet.Server{
-		Hostname:   n.hostname,
-		AuthKey:    n.authKey,
-		Dir:        dir,
-		Ephemeral:  n.ephemeral,
-		ControlURL: n.controlURL, // empty => Tailscale cloud
+		Hostname:      n.hostname,
+		AuthKey:       n.authKey,
+		Dir:           dir,
+		Ephemeral:     n.ephemeral,
+		ControlURL:    n.controlURL, // empty => Tailscale cloud
+		AdvertiseTags: parseTags(n.tags),
 	}
 	n.srv = srv
 	n.mu.Unlock()
@@ -196,6 +263,20 @@ func mesh_up(h C.long) C.int {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	if _, err := srv.Up(ctx); err != nil {
+		// Every node advertises tag:erpl-tunnel, which the tailnet must OWN. Without
+		// a tagOwners entry the control server refuses registration, and the raw
+		// error ("requested tags are invalid or not permitted") does not say what to
+		// add or where. Name the fix rather than making the user search for it.
+		if isTagRejection(err) {
+			n.setErr(fmt.Errorf(
+				"Tailscale: the control server refused this node's tags (%s). "+
+					"Every erpl_tunnel node advertises %s, so your ACL must own it. Add:\n"+
+					"  \"tagOwners\": { \"%s\": [\"autogroup:admin\"] }\n"+
+					"at https://login.tailscale.com/admin/acls — and if your auth key is "+
+					"tagged, its tags must be owned too. Underlying error: %w",
+				strings.Join(parseTags(n.tags), ", "), erplTunnelTag, erplTunnelTag, err))
+			return 1
+		}
 		n.setErr(fmt.Errorf("Tailscale: node did not come up: %w", err))
 		return 1
 	}

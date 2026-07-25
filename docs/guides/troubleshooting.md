@@ -30,6 +30,19 @@ handshake`). Two enrolled nodes on the **same subnet** connect **directly** (hos
 candidates) and don't need DERP — that's how the data-plane test works. For real
 cross-NAT use, front Headscale with TLS.
 
+**Node shows no tags in the admin console** — tags are granted by the control
+plane from the **auth key**, not by the client. `erpl_tunnel` advertises
+`tag:erpl-tunnel` plus the secret's `tags`, but an untagged key produces an
+untagged node and no error. Add `tagOwners` entries for the tags, regenerate the
+auth key **with those tags selected**, and re-enrol. Check what was actually
+granted with `SELECT tags FROM tunnel_self(secret = 'ts');` — that is the control
+plane's answer, not your request.
+
+**A tag cannot be added per exported port** — tags are fixed when the node
+registers and `tunnel_export` happens later, so nothing can add one at export
+time. Name the node (`hostname`) for its role and read ports from `tunnels()`; if
+you need per-port tags, list them in the secret before the node starts.
+
 ## NetBird
 
 **Peer shows `Connected` / WireGuard handshake succeeds, but no TCP/ICMP flows** — this
@@ -41,6 +54,11 @@ all overlay data is dropped even though WireGuard connects. **Fix:** set
 NetBird's Go userspace packet filter instead, applies the ACL, and needs no kernel
 module or root. (Alternative, if you control the host: `sudo modprobe ip_set_hash_net
 ip_set_hash_ip`.)
+
+**`groups` on a NetBird secret has no effect** — NetBird assigns groups from the
+**setup key** (configured where you create the key), and its embed API exposes no
+client-side group option, so the field is accepted for symmetry with Tailscale's
+`tags` but cannot change anything. Set the groups on the setup key instead.
 
 **Testing NetBird locally without a cloud account** — you don't need one. Run
 management with `IdpManagerConfig: none` against a store seeded from NetBird's own
