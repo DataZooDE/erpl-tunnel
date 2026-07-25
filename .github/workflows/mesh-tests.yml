@@ -473,6 +473,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
+      # DuckDB derives its version from `git describe` on the submodule, and
+      # actions/checkout does NOT fetch submodule tags — so the build reports
+      # v0.0.1 and every extension repository 404s for it. Harmless for jobs that
+      # install nothing, fatal for these two, which fetch quack + httpfs.
+      - name: Fetch DuckDB tags (so the build reports a real version)
+        run: git -C duckdb fetch --tags --force
       - uses: actions/setup-go@v5
         with: { go-version: '1.26' }
       - name: Install build deps
@@ -510,6 +516,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
+      # DuckDB derives its version from `git describe` on the submodule, and
+      # actions/checkout does NOT fetch submodule tags — so the build reports
+      # v0.0.1 and every extension repository 404s for it. Harmless for jobs that
+      # install nothing, fatal for these two, which fetch quack + httpfs.
+      - name: Fetch DuckDB tags (so the build reports a real version)
+        run: git -C duckdb fetch --tags --force
       - uses: actions/setup-go@v5
         with: { go-version: '1.26' }
       - name: Install build deps

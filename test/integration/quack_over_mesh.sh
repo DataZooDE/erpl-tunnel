@@ -59,19 +59,24 @@ echo "== 0. fetch quack once, on the host =="
 # 404s while core serves it. Trying only core_nightly makes this test look like a
 # network failure on exactly the version the extension ships against.
 for repo in "" " FROM core_nightly"; do
-  "$DUCKDB_BIN" -c "SET extension_directory='$EXTS'; INSTALL quack$repo;" >/dev/null 2>&1
+  INSTALL_ERR="$("$DUCKDB_BIN" -c "SET extension_directory='$EXTS'; INSTALL quack$repo;" 2>&1)"
   find "$EXTS" -name 'quack.duckdb_extension' | grep -q . && break
 done
 # quack's transport is HTTP, so the client autoloads httpfs. The containers mount
 # this directory READ-ONLY, so an autoload there fails with a confusing
 # "Read-only file system" rather than a network error. Fetch it up front.
-"$DUCKDB_BIN" -c "SET extension_directory='$EXTS'; INSTALL httpfs;" >/dev/null 2>&1
-find "$EXTS" -name 'httpfs.duckdb_extension' | grep -q . || {
-  echo "FAIL: could not install httpfs (quack's HTTP transport needs it)"; exit 2; }
+HTTPFS_ERR="$("$DUCKDB_BIN" -c "SET extension_directory='$EXTS'; INSTALL httpfs;" 2>&1)"
+if ! find "$EXTS" -name 'httpfs.duckdb_extension' | grep -q .; then
+  echo "FAIL: could not install httpfs (quack's HTTP transport needs it)"
+  echo "--- duckdb said ---"; echo "$HTTPFS_ERR"
+  exit 2
+fi
 if ! find "$EXTS" -name 'quack.duckdb_extension' | grep -q .; then
   echo "FAIL: could not install quack from core or core_nightly."
-  echo "      quack needs DuckDB >= 1.5.2 and network access; this DuckDB is:"
-  "$DUCKDB_BIN" -c "SELECT version();" 2>&1 | tail -3
+  echo "--- duckdb said ---"; echo "$INSTALL_ERR"
+  echo "--- this DuckDB reports version ---"; "$DUCKDB_BIN" -c "SELECT version();" 2>&1 | tail -3
+  echo "NOTE: a version like v0.0.1 means the duckdb submodule has no tags, so the"
+  echo "      extension repository has nothing to serve. Run: git -C duckdb fetch --tags"
   exit 2
 fi
 echo "   quack ready in $EXTS"

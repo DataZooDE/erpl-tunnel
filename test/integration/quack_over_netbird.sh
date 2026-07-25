@@ -51,14 +51,22 @@ echo "== 0. fetch quack + httpfs once, on the host =="
 # transport and would otherwise autoload into the READ-ONLY mount and fail with a
 # confusing "Read-only file system".
 for repo in "" " FROM core_nightly"; do
-  "$DUCKDB_BIN" -c "SET extension_directory='$EXTS'; INSTALL quack$repo;" >/dev/null 2>&1
+  INSTALL_ERR="$("$DUCKDB_BIN" -c "SET extension_directory='$EXTS'; INSTALL quack$repo;" 2>&1)"
   find "$EXTS" -name 'quack.duckdb_extension' | grep -q . && break
 done
-"$DUCKDB_BIN" -c "SET extension_directory='$EXTS'; INSTALL httpfs;" >/dev/null 2>&1
-find "$EXTS" -name 'quack.duckdb_extension' | grep -q . || {
-  echo "FAIL: could not install quack (needs DuckDB >= 1.5.2 + network)"; exit 2; }
-find "$EXTS" -name 'httpfs.duckdb_extension' | grep -q . || {
-  echo "FAIL: could not install httpfs (quack's HTTP transport needs it)"; exit 2; }
+HTTPFS_ERR="$("$DUCKDB_BIN" -c "SET extension_directory='$EXTS'; INSTALL httpfs;" 2>&1)"
+if ! find "$EXTS" -name 'quack.duckdb_extension' | grep -q .; then
+  echo "FAIL: could not install quack (needs DuckDB >= 1.5.2 + network)"
+  echo "--- duckdb said ---"; echo "$INSTALL_ERR"
+  "$DUCKDB_BIN" -c "SELECT version();" 2>&1 | tail -3
+  echo "NOTE: a version like v0.0.1 means the duckdb submodule has no tags."
+  exit 2
+fi
+if ! find "$EXTS" -name 'httpfs.duckdb_extension' | grep -q .; then
+  echo "FAIL: could not install httpfs (quack's HTTP transport needs it)"
+  echo "--- duckdb said ---"; echo "$HTTPFS_ERR"
+  exit 2
+fi
 echo "   quack + httpfs ready in $EXTS"
 
 echo "== 1. seed the management store (no IdP) =="
