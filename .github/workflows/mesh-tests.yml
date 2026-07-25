@@ -111,6 +111,33 @@ jobs:
         if: always()
         run: make test_down
 
+  # NFR-1: the shipped file is self-contained. Loads the extension in a minimal
+  # glibc container with nothing installed beyond a stock DuckDB — no libssh2, no
+  # OpenSSL, no Go runtime, no tailscale/netbird daemon. Built MESH_BACKEND=both so
+  # the embedded Go shims are actually present in the artifact under test.
+  zero-dep:
+    name: Zero-dependency proof (NFR-1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.26.4' }
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Set up vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$HOME/vcpkg"
+          "$HOME/vcpkg/bootstrap-vcpkg.sh"
+          echo "VCPKG_ROOT=$HOME/vcpkg" >> "$GITHUB_ENV"
+      - name: Build release (MESH_BACKEND=both)
+        env: { MESH_BACKEND: both, GEN: ninja }
+        run: make release
+      - name: Load in a bare container
+        # ubuntu-latest builds on a rolling glibc, so the probe image has to match or
+        # newer; the published artifact is built on manylinux and runs anywhere.
+        run: BASE_IMAGE=ubuntu:24.04 make zero_dep
+
   spike:
     name: Go-in-dlopen spike (R1)
     runs-on: ubuntu-latest
