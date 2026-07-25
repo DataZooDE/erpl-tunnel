@@ -37,9 +37,25 @@ no Go toolchain and no mesh daemon installed.
   broad compatibility. A local build on a rolling distro inherits that distro's
   (newer) glibc floor — so the local `zero_dep` test uses a base image whose glibc
   matches (override with `BASE_IMAGE=`); CI's manylinux artifact runs anywhere.
-- **Platforms.** linux/amd64, linux/arm64, osx/amd64, osx/arm64. Windows deferred
-  (BRD NG5/R6). macOS embedded `.dylib` must be code-signed to `dlopen` under
-  Gatekeeper (BRD R7) — handled at build/sign time.
+- **Platforms.** linux/amd64, linux/arm64, osx/amd64, osx/arm64 and
+  windows/amd64 all ship the mesh backends. musl and wasm are SSH-only (Go cgo
+  `c-shared` needs glibc). Windows is no longer deferred — see below.
+- **Windows.** The shim is a `.dll` built with mingw-w64 (cgo cannot use MSVC)
+  while the extension itself stays MSVC; they meet only over a plain C ABI and OS
+  socket handles. Built with `-static-libgcc`, so `dumpbin /dependents` shows only
+  `KERNEL32` plus the `api-ms-win-crt-*` UCRT forwarders — no libgcc,
+  libwinpthread or libstdc++. That matters because the shim is extracted **alone**
+  into its cache directory, with nothing beside it to satisfy a dependency.
+- **Windows shim cache.** A loaded DLL cannot be deleted on Windows, so the Unix
+  "unlink immediately after mapping" trick is impossible. The shim is instead
+  written to a content-addressed per-user cache,
+  `%LOCALAPPDATA%\DataZoo\erpl-tunnel\shims\<hash>\{ts,nb}_shim.dll`, and
+  reused across runs. Deliberately not `%TEMP%`: writing an executable there and
+  immediately loading it is the canonical dropper pattern that endpoint protection
+  blocks, and `%LOCALAPPDATA%` is already per-user ACL'd (which is what NFR-5
+  wanted the 0700 temp file for on Unix).
+- macOS embedded `.dylib` must be code-signed to `dlopen` under Gatekeeper
+  (BRD R7) — handled at build/sign time.
 
 ## One mesh per process
 

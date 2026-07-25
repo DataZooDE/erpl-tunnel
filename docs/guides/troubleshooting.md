@@ -51,6 +51,29 @@ gRPC path that needs no IdP.
 throwaway client sharing the peer's netns: `docker run --rm --network container:<peer>
 curlimages/curl -s http://<overlay-ip>:8000/…`.
 
+## Windows
+
+**`failed to load the Tailscale shim … The specified module could not be found`**
+— `ERROR_MOD_NOT_FOUND`. The shim is extracted on its own into a cache directory,
+so it must not depend on anything but system DLLs. A shim built without
+`-static-libgcc` pulls in `libgcc_s_seh-1.dll` / `libwinpthread-1.dll`, which are
+not there. Rebuild with the bundled CMake logic (or check with
+`dumpbin /dependents` — you should see only `KERNEL32` and `api-ms-win-crt-*`).
+
+**Antivirus quarantines the shim, or first activation is slow** — the mesh shim is
+written to
+`%LOCALAPPDATA%\DataZoo\erpl-tunnel\shims\<hash>\{ts,nb}_shim.dll` and loaded
+from there. It is a large unsigned DLL, so a first-load scan can take a few
+seconds, and aggressive enterprise policies may quarantine it. Allowlist that
+path. Deleting the directory is safe when DuckDB is not running — it is recreated
+on the next activation.
+
+**`tunnel_peers` / `tunnel_self` / `tunnel_mesh_activate` do not exist** — you are
+on an SSH-only build. On Windows the mesh backends need a mingw-w64 gcc for cgo at
+*build* time; without one the build degrades to SSH-only with a warning. Check
+with `SELECT function_name FROM duckdb_functions() WHERE function_name LIKE
+'tunnel_%';` and see [building](building.md).
+
 ## Loading / building
 
 **`did not contain the expected entrypoint function`** — DuckDB derives the entrypoint
