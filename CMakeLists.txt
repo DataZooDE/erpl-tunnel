@@ -73,6 +73,14 @@ if(MESH_BACKEND STREQUAL "tailscale" OR MESH_BACKEND STREQUAL "netbird" OR MESH_
     set(MESH_WANTED ON)
 endif()
 
+# On Windows cgo needs a mingw-w64 gcc. Resolve it before committing to a mesh
+# build: without one this degrades to SSH-only rather than failing, so third-party
+# builders still get a working extension (our own CI sets ERPL_REQUIRE_MESH so a
+# missing toolchain is loud there).
+if(MESH_WANTED AND WIN32)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/bootstrap_mingw.cmake)
+endif()
+
 if(MESH_WANTED)
     list(APPEND EXTENSION_SOURCES
         src/mesh_loader.cpp
@@ -87,43 +95,86 @@ endif()
 
 # Embed the shim blobs via assembler .incbin (a 55 MB C array OOM-kills cc1 on
 # constrained CI runners). Needs the ASM language.
-if(MESH_WANTED)
+# MSVC has no GNU assembler, so on Windows the .S is assembled to a COFF object by
+# mingw (which the Go build needs anyway) and handed to link.exe as a plain object.
+# That is safe because it is pure data: no relocations, no symbol references, no
+# runtime-library directives. An RCDATA resource — the otherwise idiomatic Windows
+# answer — was measured and rejected: a resource does not survive being linked
+# through a static library, which would have broken the static extension inside
+# unittest.exe while the shipped DLL worked. See test/win/blob_embed.
+if(MESH_WANTED AND NOT WIN32)
     enable_language(ASM)
 endif()
 
 function(add_mesh_shim MESH_ID SHIM_DIR SYM DEFINE)
-    set(SHIM_SO "${CMAKE_CURRENT_BINARY_DIR}/${MESH_ID}_shim.so")
+    if(WIN32)
+        set(SHIM_LIB "${CMAKE_CURRENT_BINARY_DIR}/${MESH_ID}_shim.dll")
+    else()
+        set(SHIM_LIB "${CMAKE_CURRENT_BINARY_DIR}/${MESH_ID}_shim.so")
+    endif()
     set(BLOB_S "${CMAKE_CURRENT_BINARY_DIR}/${MESH_ID}_shim_blob.S")
     file(GLOB SHIM_GO_SRC "${CMAKE_CURRENT_SOURCE_DIR}/${SHIM_DIR}/*.go")
+    # The shared stream-pair module is a source dependency of both shims.
+    file(GLOB PAIR_GO_SRC "${CMAKE_CURRENT_SOURCE_DIR}/shim/meshpair/*.go")
+
     # GOTOOLCHAIN=local: use exactly the bootstrapped Go (already >= the shims' go.mod
     # requirement), never fetch — deterministic and offline-friendly in CI. GOROOT is
     # pinned so a stale environment GOROOT can't mis-root the toolchain.
+    set(_go_env CGO_ENABLED=1 GOFLAGS=-mod=mod GOTOOLCHAIN=local "GOROOT=${GO_ROOT}")
+    if(WIN32)
+        # cgo cannot use MSVC; it needs a gcc-style driver. -static-libgcc keeps the
+        # shim self-contained, which matters because it is extracted ALONE into a
+        # cache directory at runtime and must not need libgcc beside it.
+        list(APPEND _go_env "CC=${MINGW_CC}" "CGO_LDFLAGS=-static-libgcc")
+    endif()
+
     add_custom_command(
-        OUTPUT ${SHIM_SO}
-        COMMAND ${CMAKE_COMMAND} -E env CGO_ENABLED=1 GOFLAGS=-mod=mod GOTOOLCHAIN=local
-                "GOROOT=${GO_ROOT}"
-                ${GO_EXECUTABLE} build -buildmode=c-shared -o ${SHIM_SO} .
+        OUTPUT ${SHIM_LIB}
+        COMMAND ${CMAKE_COMMAND} -E env ${_go_env}
+                ${GO_EXECUTABLE} build -buildmode=c-shared -o ${SHIM_LIB} .
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${SHIM_DIR}
-        DEPENDS ${SHIM_GO_SRC}
+        DEPENDS ${SHIM_GO_SRC} ${PAIR_GO_SRC}
                 ${CMAKE_CURRENT_SOURCE_DIR}/${SHIM_DIR}/go.mod
                 ${CMAKE_CURRENT_SOURCE_DIR}/${SHIM_DIR}/go.sum
         COMMENT "Building ${MESH_ID} Go c-shared shim"
         VERBATIM)
+
     if(APPLE)
         set(_is_apple 1)
     else()
         set(_is_apple 0)
     endif()
+    if(WIN32)
+        set(_is_windows 1)
+    else()
+        set(_is_windows 0)
+    endif()
     add_custom_command(
         OUTPUT ${BLOB_S}
-        COMMAND ${CMAKE_COMMAND} -DIN=${SHIM_SO} -DOUT=${BLOB_S} -DSYM=${SYM} -DIS_APPLE=${_is_apple}
+        COMMAND ${CMAKE_COMMAND} -DIN=${SHIM_LIB} -DOUT=${BLOB_S} -DSYM=${SYM}
+                -DIS_APPLE=${_is_apple} -DIS_WINDOWS=${_is_windows}
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_blob_asm.cmake
-        DEPENDS ${SHIM_SO}
+        DEPENDS ${SHIM_LIB}
         COMMENT "Embedding ${MESH_ID} shim blob (.incbin)"
         VERBATIM)
-    # The .S embeds SHIM_SO via .incbin at assemble time; re-assemble if the .so changes.
-    set_source_files_properties(${BLOB_S} PROPERTIES OBJECT_DEPENDS ${SHIM_SO})
-    set(MESH_BLOB_SOURCES ${MESH_BLOB_SOURCES} ${BLOB_S} PARENT_SCOPE)
+
+    if(WIN32)
+        # Assemble here rather than letting CMake drive it: enable_language(ASM)
+        # under MSVC selects MASM, which has no .incbin at all.
+        set(BLOB_OBJ "${CMAKE_CURRENT_BINARY_DIR}/${MESH_ID}_shim_blob.obj")
+        add_custom_command(
+            OUTPUT ${BLOB_OBJ}
+            COMMAND "${MINGW_CC}" -c ${BLOB_S} -o ${BLOB_OBJ}
+            DEPENDS ${BLOB_S} ${SHIM_LIB}
+            COMMENT "Assembling ${MESH_ID} shim blob into a COFF object"
+            VERBATIM)
+        set_source_files_properties(${BLOB_OBJ} PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
+        set(MESH_BLOB_SOURCES ${MESH_BLOB_SOURCES} ${BLOB_OBJ} PARENT_SCOPE)
+    else()
+        # The .S embeds SHIM_LIB via .incbin at assemble time; re-assemble if it changes.
+        set_source_files_properties(${BLOB_S} PROPERTIES OBJECT_DEPENDS ${SHIM_LIB})
+        set(MESH_BLOB_SOURCES ${MESH_BLOB_SOURCES} ${BLOB_S} PARENT_SCOPE)
+    endif()
     set(MESH_DEFINES ${MESH_DEFINES} ${DEFINE} PARENT_SCOPE)
 endfunction()
 

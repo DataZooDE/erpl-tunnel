@@ -128,14 +128,18 @@ jobs:
         run: |
           $deps = & dumpbin /dependents ts_shim.dll | Out-String
           Write-Host $deps
+          # Plain substring test: -match would treat these as regexes, and
+          # 'libstdc++' is an invalid pattern (nested quantifier).
           foreach ($bad in @('libgcc', 'libwinpthread', 'libstdc++', 'msys-')) {
-            if ($deps -match $bad) { throw "shim depends on $bad — it would not load on a clean machine" }
+            if ($deps.ToLower().Contains($bad)) {
+              throw "shim depends on $bad — it would not load on a clean machine"
+            }
           }
       - name: Build the spike with MSVC and run it
         shell: pwsh
         run: |
           cl /nologo /W3 shim\spike_loadlibrary.c /Fe:spike.exe
-          .\spike.exe ts_shim.dll 1
+          .\spike.exe "$env:GITHUB_WORKSPACE\ts_shim.dll" 1
 
   # How to embed the shim blob on Windows so it survives BOTH the loadable
   # extension (a DLL) and the static extension inside unittest.exe.

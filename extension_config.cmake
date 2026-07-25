@@ -10,16 +10,21 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 
 # Mesh backend bundle selection (ADR-012), per platform:
-#   glibc Linux + macOS -> 'both' (ssh + tailscale + netbird; runtime picks a mesh
-#                          via the single-mesh latch; mesh shims dlopen'd lazily).
-#   Windows + musl       -> 'ssh'  (the Go c-shared mesh shims use socketpair/AF_UNIX
-#                          + dlopen, which don't exist there; SSH via libssh2 works).
+#   glibc Linux + macOS + Windows -> 'both' (ssh + tailscale + netbird; the runtime
+#                          picks one mesh via the single-mesh latch and loads its
+#                          shim lazily).
+#   musl / wasm          -> 'ssh'  (no Go cgo c-shared there).
+#
+# Windows carried 'ssh' until the stream pair stopped depending on AF_UNIX
+# socketpair (shim/meshpair) and the loader learned LoadLibraryW. It still degrades
+# to SSH-only automatically if no mingw-w64 gcc is available for cgo — see
+# cmake/bootstrap_mingw.cmake. Set ERPL_DISABLE_WINDOWS_MESH to force that.
 # One extension name, per-platform backend set. Override with `MESH_BACKEND=... make`.
 if(DEFINED ENV{MESH_BACKEND})
     set(_erpl_mesh "$ENV{MESH_BACKEND}")
 else()
     set(_erpl_mesh "both")
-    if(WIN32 OR CMAKE_SYSTEM_NAME MATCHES "Windows")
+    if((WIN32 OR CMAKE_SYSTEM_NAME MATCHES "Windows") AND DEFINED ENV{ERPL_DISABLE_WINDOWS_MESH})
         set(_erpl_mesh "ssh")
     endif()
     # musl / wasm targets have no Go cgo c-shared — SSH-only there too.

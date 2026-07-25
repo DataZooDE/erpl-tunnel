@@ -22,6 +22,7 @@
  * The fix shipped in Go 1.26, which is why the toolchain floor is 1.26.
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <windows.h>
 
