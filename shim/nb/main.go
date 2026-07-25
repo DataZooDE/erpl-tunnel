@@ -26,6 +26,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -332,12 +333,32 @@ func mesh_self_json(h C.long, buf *C.char, length C.size_t, need *C.size_t) C.in
 	n.mu.Lock()
 	up := n.up
 	host := n.hostname
+	client := n.client
 	n.mu.Unlock()
+
+	// mesh_ip used to be hardcoded empty, which made tunnel_self() useless on
+	// NetBird and left tunnel_export with no address to report — the export
+	// worked but nobody could discover where to reach it. LocalPeerState carries
+	// both the overlay IP and the FQDN.
+	meshIP := ""
+	dnsName := ""
+	if client != nil {
+		if st, err := client.Status(); err == nil {
+			meshIP = st.LocalPeerState.IP
+			dnsName = st.LocalPeerState.FQDN
+		}
+	}
+	// LocalPeerState.IP is CIDR-ish ("100.64.54.59/16"); callers want a dialable
+	// address, and MeshExporter puts this straight into tunnels().remote_host.
+	if i := strings.IndexByte(meshIP, '/'); i >= 0 {
+		meshIP = meshIP[:i]
+	}
+
 	self := map[string]interface{}{
 		"backend":   "netbird",
 		"host_name": host,
-		"dns_name":  "",
-		"mesh_ip":   "",
+		"dns_name":  dnsName,
+		"mesh_ip":   meshIP,
 		"tags":      []string{},
 		"online":    up,
 	}

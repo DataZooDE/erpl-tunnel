@@ -13,8 +13,11 @@ Kept honest on purpose: an empty cell means *not covered*, not *probably fine*.
 | Mesh shim extracts, loads, Go runtime starts | ✅ | ✅ | ✅ |
 | Single-mesh latch refuses a second mesh | ✅ | ✅ | ✅ |
 | Lazy load — SSH-only sessions map no Go | ✅ | ✅ | — |
-| **SSH data plane** — real payload through a tunnel | ✅ | — | — |
+| **SSH data plane (import)** — real payload through a tunnel | ✅ | — | — |
+| **SSH data plane (export)** — remote-forward, fetched from the bastion | ✅ | — | — |
 | **Mesh data plane** — real WireGuard payload | ✅ | — | — |
+| **Mesh export** — a peer runs SQL in our DuckDB over quack | ✅ | — | — |
+| ↳ on NetBird too (adds inbound access policy) | ✅ | — | — |
 | Zero-dependency (loads in a bare container) | ✅ | — | — |
 
 ## The gaps, stated plainly
@@ -42,7 +45,7 @@ Kept honest on purpose: an empty cell means *not covered*, not *probably fine*.
 |---|---|---|
 | `core-tests` | ubuntu | mesh-peers JSON parser, DuckDB-free |
 | `meshpair` | ubuntu, macos, windows | the local stream pair on each OS |
-| `ssh-e2e` | ubuntu | real payload through the docker SSH bastion + the four live-SSH tests |
+| `ssh-e2e` | ubuntu | real payload through the docker SSH bastion, both directions (`tunnel_import` and `tunnel_export`), + the four live-SSH tests |
 | `zero-dep` | ubuntu | loads in a bare glibc container (NFR-1) |
 | `spike` | ubuntu | Go runs under `dlopen` (BRD R1) |
 | `spike-windows` | windows | Go runs under `LoadLibrary` from an MSVC host; no non-system DLL deps |
@@ -51,6 +54,8 @@ Kept honest on purpose: an empty cell means *not covered*, not *probably fine*.
 | `mesh-runtime-macos` | macos | the Mach-O equivalent: lazy load + latch |
 | `mesh-e2e` | ubuntu | lazy load, latch, real Headscale enrollment |
 | `tailscale-dataplane` | ubuntu | real WireGuard payload to a kernel-TUN Tailscale peer |
+| `quack-over-tailscale` | ubuntu | the `tunnel_export` acceptance test: a tailnet peer ATTACHes and queries our DuckDB over quack |
+| `quack-over-netbird` | ubuntu | the same acceptance test on NetBird, which additionally exercises inbound access policy |
 | `netbird-dataplane` | ubuntu | real WireGuard payload, self-hosted no-IdP NetBird |
 
 `MainDistributionPipeline.yml` builds and tests the release matrix for DuckDB

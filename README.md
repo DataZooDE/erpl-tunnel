@@ -21,7 +21,7 @@ Three transports, one small SQL surface:
 LOAD erpl_tunnel;
 CREATE SECRET bastion (TYPE ssh_tunnel, host 'bastion.example.com',
                        user 'jump', password '…');
-PRAGMA tunnel_create(secret = 'bastion',
+PRAGMA tunnel_import(secret = 'bastion',
        remote_host = 'sap.internal', remote_port = 3300, local_port = 9001);
 -- the private SAP gateway is now at localhost:9001
 ```
@@ -63,7 +63,7 @@ the right backends for your platform.
 CREATE SECRET bastion (TYPE ssh_tunnel,
     host 'bastion.example.com', user 'jump', password '…');   -- or private_key_path '…'
 
-PRAGMA tunnel_create(secret = 'bastion',
+PRAGMA tunnel_import(secret = 'bastion',
     remote_host = 'internal-http', remote_port = 8000, local_port = 9000);
 
 -- Now read a private CSV as if it were local:
@@ -87,7 +87,7 @@ CREATE SECRET ts (TYPE tunnel, backend 'tailscale',
 
 SELECT host_name, mesh_ip, online FROM tunnel_peers(secret = 'ts');  -- who's out there
 
-PRAGMA tunnel_create(secret = 'ts',
+PRAGMA tunnel_import(secret = 'ts',
     remote_host = 'duckdb-eu-shard3', remote_port = 4213, local_port = 9000);
 ```
 
@@ -103,9 +103,54 @@ still be unreachable. Full walkthrough: [NetBird guide](docs/guides/netbird.md).
 CREATE SECRET nb (TYPE tunnel, backend 'netbird',
     setup_key 'A2C8E62B-38F5-…', hostname 'duckdb-eu-1');
 
-PRAGMA tunnel_create(secret = 'nb',
+PRAGMA tunnel_import(secret = 'nb',
     remote_host = '100.x.y.z', remote_port = 8000, local_port = 9000);
 ```
+
+### 4 · Export — turn this DuckDB into a SAP gateway others can query
+
+The three examples above *consume* a service. The reverse is often more useful:
+put one DuckDB next to SAP — the box that has the NetWeaver RFC SDK, the SAP
+credentials and the network path — and let colleagues query it from anywhere on
+the mesh. They need no SAP account, no SDK and no route to the SAP network.
+
+**On the SAP-adjacent node**, expose exactly what you want to share as views, then
+publish the DuckDB protocol port onto the tailnet:
+
+```sql
+INSTALL 'erpl' FROM 'http://get.erpl.io'; LOAD 'erpl';
+CREATE SECRET sap (TYPE sap_rfc, ASHOST 'sap.internal', SYSNR '00',
+    CLIENT '100', USER 'DEVELOPER', PASSWD '…', LANG 'EN');
+
+-- Share views, not raw access: this is the contract your peers see.
+CREATE VIEW flights AS SELECT * FROM sap_read_table('SFLIGHT', SECRET='sap');
+
+INSTALL quack; LOAD quack;
+CALL quack_serve('quack:127.0.0.1:9494', token => 'a-long-shared-token',
+    allow_other_hostname => true);
+
+CREATE SECRET ts (TYPE tunnel, backend 'tailscale', auth_key 'tskey-auth-…',
+    hostname 'duckdb-sap-gw', ephemeral true);
+PRAGMA tunnel_export(secret = 'ts', local_port = 9494);
+
+SELECT mesh_ip FROM tunnel_self(secret = 'ts');   -- the address to share
+```
+
+**On any peer**, attach and query. The SQL runs on the gateway, so the SAP round
+trip happens there and only results cross the network:
+
+```sql
+INSTALL quack; LOAD quack;
+ATTACH 'quack:100.x.y.z:9494' AS sapgw (TYPE quack,
+    TOKEN 'a-long-shared-token', DISABLE_SSL true);
+
+SELECT CARRID, count(*) FROM sapgw.main.flights GROUP BY 1 ORDER BY 2 DESC;
+```
+
+`DISABLE_SSL true` is required — the quack client defaults to HTTPS for a
+non-local address, and the mesh already encrypts the hop. Works the same on
+NetBird; see the [Tailscale](docs/guides/tailscale.md) and
+[NetBird](docs/guides/netbird.md) guides for the full walkthrough, including SAP BW.
 
 More detail per backend, plus how to get the keys and run your own control server:
 **[docs/guides/](docs/guides/)** — [getting started](docs/guides/getting-started.md) ·
@@ -119,40 +164,65 @@ More detail per backend, plus how to get the keys and run your own control serve
 
 | Function | Kind | What it does |
 |---|---|---|
-| `tunnel_create(secret, remote_host, remote_port, local_port [, timeout, bind_all])` | pragma | Open a tunnel; returns `(tunnel_id, message)`. |
-| `tunnels()` | table | Active local tunnels: `tunnel_id, backend, remote_host, remote_port, local_port, bind_addr, status` (plus `ssh_host/ssh_port/ssh_user` for SSH). |
+| `tunnel_import(secret, remote_host, remote_port, local_port [, timeout, bind_all])` | pragma | Bring a remote service to a local port; returns `(tunnel_id, message)`. Alias: `tunnel_create`. |
+| `tunnel_export(secret, local_port [, local_host, remote_port, remote_host, timeout])` | pragma | Publish a local port onto the network; returns `(tunnel_id, remote_port, message)`. |
+| `tunnels()` | table | Active tunnels both ways: `tunnel_id, backend, direction, remote_host, remote_port, local_host, local_port, bind_addr, status` (plus `ssh_host/ssh_port/ssh_user` for SSH). |
 | `tunnel_close(id)` / `tunnel_close_all` | pragma | Close one / all tunnels (idempotent). |
-| `tunnel_peers(secret)` † | table | Mesh peers (peer-local, no API token): `backend, host_name, dns_name, mesh_ip, tags, online`. Tailscale today; NetBird returns an empty set (the embed API exposes no peer list — use `tunnel_self` + the dashboard). |
-| `tunnel_self(secret)` † | table | This node's own mesh identity. |
-| `tunnel_mesh_activate('tailscale'\|'netbird')` † | pragma | *Advanced* — force-load a mesh backend now. Normally automatic on first `tunnel_create`/`tunnel_peers`; use only to surface auth errors early or pin the one mesh for this process. |
+| `tunnel_peers(secret)` † | table | Mesh peers (peer-local, no API token): `backend, host_name, dns_name, mesh_ip, tags, online`. Tailscale today; NetBird returns an empty set (the embed API exposes no peer list — use `tunnel_self` for your own address, and the dashboard for others). |
+| `tunnel_self(secret)` † | table | This node's own mesh identity — including the `mesh_ip` peers should dial. |
+| `tunnel_mesh_activate('tailscale'\|'netbird')` † | pragma | *Advanced* — force-load a mesh backend now. Normally automatic on first `tunnel_import`/`tunnel_peers`; use only to surface auth errors early or pin the one mesh for this process. |
 
 † Present only in **mesh-enabled builds** — the published Linux, macOS and Windows
 artifacts; not in musl/wasm SSH-only builds. Check what your build has with
 `SELECT function_name FROM duckdb_functions() WHERE function_name LIKE 'tunnel_%';`.
 
-`tunnel_create` binds `127.0.0.1` by default; pass `bind_all = true` for all
+`tunnel_import` binds `127.0.0.1` by default; pass `bind_all = true` for all
 interfaces. `timeout` (seconds) bounds how long it waits for the listener.
 
-### Direction: outbound only
+### Direction: import vs export
 
-Every tunnel goes **one way** — this DuckDB process reaches *out* to a service
-somewhere else:
+A tunnel goes one way, and which way is the first thing to decide:
 
 ```
-tunnel_create(remote_host, remote_port, local_port)
+tunnel_import(remote_host, remote_port, local_port)     -- consume someone else's service
     binds 127.0.0.1:local_port   →   dials remote_host:remote_port over the backend
+
+tunnel_export(local_port [, remote_port])               -- offer your own service
+    accepts on the network   →   dials 127.0.0.1:local_port here
 ```
 
-So `remote_host`/`remote_port` are the service you want to *consume*, and
-`local_port` is the local address you get back for it. The shape comes from SSH
-local forwarding (`ssh -L`), and it is applied uniformly to the mesh backends too.
+**Import** when the data lives elsewhere and you want to query it: `remote_host`/
+`remote_port` are the service you want, `local_port` is the local address you get
+back for it. This is `ssh -L`, applied uniformly to the mesh backends too.
 
-**Publishing a local port onto the mesh — so other tailnet/NetBird peers can
-connect to *you* — is not supported.** On a mesh your node does have its own
-`100.x` address, so that is a reasonable thing to want; it simply is not
-implemented yet (there is no listen primitive in the mesh shim ABI, only dial).
-If you need it, open an issue — `tsnet` and NetBird's embed client both support
-it upstream, so it is a question of surfacing it, not of feasibility.
+**Export** when *this* DuckDB is the thing worth reaching — the shape that lets
+peers run queries against you:
+
+```sql
+INSTALL quack; LOAD quack;
+CALL quack_serve('quack:127.0.0.1:9494', allow_other_hostname => true);
+PRAGMA tunnel_export(secret = 'ts', local_port = 9494);
+```
+
+Any peer on the network can then attach to it:
+
+```sql
+ATTACH 'quack:100.x.y.z:9494' AS remote (TYPE quack, TOKEN '…', DISABLE_SSL true);
+SELECT * FROM remote.main.my_table;
+```
+
+`DISABLE_SSL true` is required: the quack client defaults to HTTPS for a non-local
+address, and the mesh already encrypts the link. Find your own address with
+`SELECT * FROM tunnel_self(secret = 'ts');`.
+
+On a mesh the service is published on **your node's own mesh address** — there is
+no host to name, so `remote_host` is rejected. Over SSH, `tunnel_export` is a real
+remote-forward (`ssh -R`): the server binds `remote_port` and `remote_host` is the
+bind address there. `remote_port` defaults to `local_port`; pass `remote_port = 0`
+to let an SSH server choose one and read it back from the returned row.
+
+`tunnel_create` is a deprecated alias of `tunnel_import`, kept so existing scripts
+keep working.
 
 ### Secret fields
 

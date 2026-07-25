@@ -11,7 +11,9 @@ import sys
 import os
 import re
 
-PORT = 8000
+# Port 8000 inside the docker network; the export test runs this on the host and
+# needs a port of its own, so allow an override as argv[1].
+PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
 RESPONSE = "Hello from service"
 
 # Sample CSV data for testing

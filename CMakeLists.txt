@@ -60,6 +60,7 @@ set(EXTENSION_SOURCES
     src/pragma_tunnel_close_all.cpp
     src/scanner_tunnels.cpp
     src/pragma_tunnel_export.cpp
+    src/ssh_exporter.cpp
 )
 
 # --- Mesh backends: Unix-only (Go c-shared shims use socketpair/AF_UNIX + dlopen) --

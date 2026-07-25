@@ -125,6 +125,27 @@ int64_t TunnelManager::CreateMeshExport(std::shared_ptr<MeshBackend> backend, in
 }
 #endif
 
+int64_t TunnelManager::CreateSshExport(const TunnelAuthParams &auth_params,
+                                       const string &local_host, int local_port,
+                                       const string &remote_bind_host, int remote_port,
+                                       int timeout_seconds) {
+    int64_t tunnel_id = GenerateTunnelId();
+    auto exporter = std::make_shared<SshExporter>(auth_params, local_host, local_port,
+                                                  remote_bind_host, remote_port);
+    exporter->Start(timeout_seconds); // throws actionably on failure
+    {
+        std::lock_guard<std::mutex> lock(tunnels_mutex);
+        tunnels[tunnel_id] = std::move(exporter);
+    }
+    return tunnel_id;
+}
+
+int TunnelManager::GetTunnelBoundPort(int64_t tunnel_id) const {
+    std::lock_guard<std::mutex> lock(tunnels_mutex);
+    auto it = tunnels.find(tunnel_id);
+    return it == tunnels.end() ? 0 : it->second->GetAttributes().remote_port;
+}
+
 bool TunnelManager::CloseTunnel(int64_t tunnel_id) {
     // One lookup covers SSH, mesh and exported listeners alike.
     std::shared_ptr<TunnelHandle> to_close;
@@ -214,16 +235,26 @@ void TunnelManager::CloseAllTunnels() {
 }
 
 void TunnelManager::CleanupInactiveTunnels() {
-    std::lock_guard<std::mutex> lock(tunnels_mutex);
-    for (auto it = tunnels.begin(); it != tunnels.end();) {
-        // IsActive() means "still doing its job", not "has live connections" — an
-        // idle exported listener is healthy and must not be reaped here.
-        if (!it->second->IsActive()) {
-            it->second->Close();
-            it = tunnels.erase(it);
-        } else {
-            ++it;
+    // Collect under the lock, close outside it. Close() on an SSH export joins
+    // worker threads, which can take seconds; doing that while holding
+    // tunnels_mutex blocks every other tunnel operation behind the reaper — the
+    // same shape CloseTunnel()/CloseAllTunnels() deliberately avoid.
+    std::vector<std::shared_ptr<TunnelHandle>> to_close;
+    {
+        std::lock_guard<std::mutex> lock(tunnels_mutex);
+        for (auto it = tunnels.begin(); it != tunnels.end();) {
+            // IsActive() means "still doing its job", not "has live connections" —
+            // an idle exported listener is healthy and must not be reaped here.
+            if (!it->second->IsActive()) {
+                to_close.push_back(it->second);
+                it = tunnels.erase(it);
+            } else {
+                ++it;
+            }
         }
+    }
+    for (auto &handle : to_close) {
+        handle->Close();
     }
 }
 

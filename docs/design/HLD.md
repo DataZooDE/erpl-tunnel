@@ -160,6 +160,13 @@ int mesh_close(mesh_node);
 
 ## 6. Runtime view
 
+> **Naming note.** This document was written when the only pragma was
+> `tunnel_create`. That pragma is now called **`tunnel_import`** (consume a remote
+> service), with `tunnel_create` kept as a deprecated alias, and it has a sibling
+> **`tunnel_export`** (publish a local port onto the network) — see
+> [ADR-014](ADR.md). Read `tunnel_create` below as `tunnel_import`; the flows are
+> unchanged.
+
 ### 6.1 `tunnel_create` over a mesh backend
 
 ```mermaid
@@ -267,16 +274,16 @@ CREATE SECRET s_nb  (TYPE tunnel, backend 'netbird',
     ephemeral true, management_url '' /*empty=NetBird cloud*/, state_dir '…');
 
 -- Lifecycle (names kept erpl-compatible)
-PRAGMA tunnel_create(secret := 's_ts',
-    remote_host := 'duckdb-eu-shard3', remote_port := 4213,
-    local_port := 9000, timeout := 30);              -- → (tunnel_id, message)
+PRAGMA tunnel_create(secret = 's_ts',
+    remote_host = 'duckdb-eu-shard3', remote_port = 4213,
+    local_port = 9000, timeout = 30);              -- → (tunnel_id, message)
 SELECT * FROM tunnels();                              -- active local tunnels
 PRAGMA tunnel_close(1);
 PRAGMA tunnel_close_all;
 
 -- Discovery / identity (mesh backends)
-SELECT * FROM tunnel_peers(secret := 's_ts');        -- peer-local enumeration
-SELECT * FROM tunnel_self(secret := 's_ts');         -- this node's name/ip/tags
+SELECT * FROM tunnel_peers(secret = 's_ts');        -- peer-local enumeration
+SELECT * FROM tunnel_self(secret = 's_ts');         -- this node's name/ip/tags
 ```
 
 `tunnels()` columns: `tunnel_id, backend, remote_host, remote_port,

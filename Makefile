@@ -51,6 +51,14 @@ e2e: debug
 	  test/integration/e2e_http_over_tunnel.sh \
 	  $(EXT_DEBUG)
 
+# The mirror of `e2e`: publish a local HTTP server onto the bastion with
+# tunnel_export and fetch it from INSIDE the container. Requires `make test_up`.
+.PHONY: ssh_export_e2e
+ssh_export_e2e: debug
+	DUCKDB_BIN=$(PROJ_DIR)build/debug/duckdb \
+	  test/integration/e2e_ssh_export.sh \
+	  $(EXT_DEBUG)
+
 # Run the SSH integration sqllogictests against the debug binary (services must be up).
 .PHONY: integration_tests
 integration_tests: debug
@@ -134,6 +142,25 @@ nb_seeder:
 nb_dataplane: nb_seeder
 	DUCKDB_BIN=$(DUCKDB_CLI) \
 	  test/integration/mesh_dataplane_netbird.sh \
+	  $(EXT_RELEASE)
+
+# THE acceptance test for tunnel_export: a peer on the tailnet ATTACHes to this
+# DuckDB over the quack protocol and runs a real query. Needs a RELEASE
+# tailscale/both build, docker, and network access to fetch quack once.
+#   MESH_BACKEND=tailscale make release quack_export
+.PHONY: quack_export
+quack_export:
+	DUCKDB_BIN=$(DUCKDB_CLI) \
+	  test/integration/quack_over_mesh.sh \
+	  $(EXT_RELEASE)
+
+# The same acceptance test on NetBird. Separate from quack_export because NetBird
+# adds inbound access policy, which the Tailscale run never exercises.
+#   MESH_BACKEND=netbird make release nb_seeder quack_export_netbird
+.PHONY: quack_export_netbird
+quack_export_netbird: nb_seeder
+	DUCKDB_BIN=$(DUCKDB_CLI) \
+	  test/integration/quack_over_netbird.sh \
 	  $(EXT_RELEASE)
 
 # Fast, DuckDB-free C++ unit tests for the pure mesh-peers JSON parser (Catch2,

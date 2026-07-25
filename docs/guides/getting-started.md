@@ -12,15 +12,19 @@ LOAD erpl_tunnel;
 
 ## The idea
 
-`erpl_tunnel` opens a **local listener** on `127.0.0.1:<local_port>` and forwards
-everything that connects to it to a **remote `host:port`**, over one of three
-transports (SSH, Tailscale, NetBird). You then point any client — `httpfs`,
-`erpl_rfc`, another DuckDB — at `localhost:<local_port>` and it just works.
+`erpl_tunnel` carries TCP over one of three transports (SSH, Tailscale, NetBird),
+in whichever direction you need:
 
-Three steps, always the same shape:
+- **`tunnel_import`** — *consume* a service that lives elsewhere. It opens a local
+  listener on `127.0.0.1:<local_port>` and forwards to a remote `host:port`. Point
+  any client — `httpfs`, `erpl_rfc`, another DuckDB — at `localhost:<local_port>`.
+- **`tunnel_export`** — *offer* a local port to the network, so others can reach
+  in. This is how you let a peer query *this* DuckDB.
+
+Start with import; it is the common case. Three steps, always the same shape:
 
 1. **`CREATE SECRET`** — where to connect and how to authenticate.
-2. **`PRAGMA tunnel_create(...)`** — open the tunnel.
+2. **`PRAGMA tunnel_import(...)`** — open the tunnel.
 3. **Use `localhost:<local_port>`** — query as if the service were local.
 
 ## Your first tunnel (SSH)
@@ -34,7 +38,7 @@ CREATE SECRET bastion (TYPE ssh_tunnel,
     -- or: private_key_path '/home/me/.ssh/id_ed25519', passphrase '…'
 
 -- 2. open the tunnel: localhost:9000  ->  bastion  ->  internal-http:8000
-PRAGMA tunnel_create(secret = 'bastion',
+PRAGMA tunnel_import(secret = 'bastion',
     remote_host = 'internal-http', remote_port = 8000, local_port = 9000);
 
 -- 3. use it
@@ -52,7 +56,7 @@ PRAGMA tunnel_close_all;     -- close all (idempotent — safe if none are open)
 ## Going through a mesh instead of a bastion
 
 If the service is on a **Tailscale** or **NetBird** network, swap the secret — the
-`tunnel_create` call is identical. The only new thing you need is one credential
+`tunnel_import` call is identical. The only new thing you need is one credential
 that lets this DuckDB node join the network without an interactive login:
 
 | Network | What you need | Where |
@@ -69,11 +73,38 @@ Before dialing, you can discover what's reachable:
 SELECT host_name, mesh_ip, online FROM tunnel_peers(secret = 'ts');
 ```
 
+## The other direction: letting others reach you
+
+When *this* DuckDB is the thing worth reaching, export a port instead. On a mesh
+there is no host to name — the service appears on your own node's address:
+
+```sql
+-- serve the quack protocol locally, then publish it on the tailnet
+INSTALL quack; LOAD quack;
+CALL quack_serve('quack:127.0.0.1:9494', allow_other_hostname => true);
+PRAGMA tunnel_export(secret = 'ts', local_port = 9494);
+
+SELECT * FROM tunnel_self(secret = 'ts');   -- the address to hand your peer
+```
+
+Any peer on the network can then query you:
+
+```sql
+ATTACH 'quack:100.x.y.z:9494' AS remote (TYPE quack, TOKEN '…', DISABLE_SSL true);
+SELECT * FROM remote.main.my_table;
+```
+
+`DISABLE_SSL true` is required — the quack client defaults to HTTPS for a non-local
+address, and the mesh already encrypts the hop.
+
+Over SSH, `tunnel_export` is a remote-forward (`ssh -R`): the SSH server binds the
+port, and `remote_host` chooses the bind address there.
+
 ## Good defaults, and how to change them
 
 - The listener binds **loopback** (`127.0.0.1`). Pass `bind_all = true` to
-  `tunnel_create` to listen on all interfaces.
-- `tunnel_create` waits up to `timeout` seconds (default 60) for the listener to
+  `tunnel_import` to listen on all interfaces.
+- `tunnel_import` waits up to `timeout` seconds (default 60) for the listener to
   be ready, then returns an actionable error.
 - Secrets **redact** every sensitive field in `duckdb_secrets()`.
 

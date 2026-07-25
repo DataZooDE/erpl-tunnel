@@ -1,0 +1,78 @@
+# name: test/sql/tunnel_export.test
+# description: tunnel_export's argument surface and its error messages. Every case
+#              here fails before any network I/O, so this runs anywhere — the point
+#              is that each failure explains itself and names the fix.
+# group: [tunnel]
+
+require erpl_tunnel
+
+statement ok
+CREATE SECRET x_ssh (TYPE ssh_tunnel, host 'bastion.invalid', user 'jump', password 'pw');
+
+# --- local_port is the one thing that cannot be defaulted --------------------
+statement error
+PRAGMA tunnel_export(secret='x_ssh');
+----
+tunnel_export requires local_port
+
+# The message must carry a copy-pasteable example, including the '=' reminder:
+# a PRAGMA rejects ':=' and that mistake is otherwise a confusing binder error.
+statement error
+PRAGMA tunnel_export(secret='x_ssh');
+----
+a PRAGMA does not accept ':='
+
+# --- a secret names the network to publish on -------------------------------
+statement error
+PRAGMA tunnel_export(local_port=9494);
+----
+tunnel_export requires secret
+
+# --- exporting requires something to export ---------------------------------
+# Port 1 has nothing behind it. The probe runs before any SSH work, so this
+# proves the error arrives early rather than after a bastion round trip.
+statement error
+PRAGMA tunnel_export(secret='x_ssh', local_port=1);
+----
+nothing is listening on 127.0.0.1:1
+
+# local_host is honoured by the probe, so a bad host is reported as such.
+statement error
+PRAGMA tunnel_export(secret='x_ssh', local_port=1, local_host='127.0.0.1');
+----
+there is nothing to export
+
+# --- port validation (added after review) -----------------------------------
+# Out-of-range ports used to reach getaddrinfo / a Go listener / libssh2, each of
+# which mangles them differently and none of which produce an actionable error.
+statement error
+PRAGMA tunnel_export(secret='x_ssh', local_port=70000);
+----
+local_port must be between 1 and 65535
+
+statement error
+PRAGMA tunnel_export(secret='x_ssh', local_port=-1);
+----
+local_port must be between 1 and 65535
+
+statement error
+PRAGMA tunnel_export(secret='x_ssh', local_port=9494, remote_port=70000);
+----
+remote_port must be between 1 and 65535
+
+# remote_port = 0 is a REQUEST, not an omission: it asks an SSH server to allocate
+# a port. It must therefore survive to the SSH path rather than being rewritten to
+# local_port — reaching the local-service probe proves it did.
+statement error
+PRAGMA tunnel_export(secret='x_ssh', local_port=1, remote_port=0);
+----
+nothing is listening on 127.0.0.1:1
+
+# ...and a mesh cannot honour it, so it must say so rather than binding port 0.
+statement ok
+CREATE SECRET x_mesh (TYPE tunnel, backend 'tailscale', auth_key 'tskey-auth-fake', hostname 'h');
+
+statement error
+PRAGMA tunnel_export(secret='x_mesh', local_port=9494, remote_port=0);
+----
+only the ssh backend can do

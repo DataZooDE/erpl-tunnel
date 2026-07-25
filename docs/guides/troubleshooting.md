@@ -13,7 +13,7 @@ extension never silently falls back to an anonymous localhost node.
 `private_key_path`) or `'password'` on the secret. SSH-agent auth is not implemented.
 
 **`local port N is already in use`** — pick a free `local_port`. The listener binds
-`127.0.0.1` by default; pass `bind_all = true` to `tunnel_create` only if you really
+`127.0.0.1` by default; pass `bind_all = true` to `tunnel_import` only if you really
 need all interfaces.
 
 ## Tailscale
@@ -50,6 +50,47 @@ gRPC path that needs no IdP.
 **The `netbirdio/netbird` image has no `curl`** — to probe overlay reachability, run a
 throwaway client sharing the peer's netns: `docker run --rm --network container:<peer>
 curlimages/curl -s http://<overlay-ip>:8000/…`.
+
+## Exporting a port (`tunnel_export`)
+
+**`nothing is listening on 127.0.0.1:N, so there is nothing to export`** — the local
+service must be running *before* you export it. `tunnel_export` probes it first on
+purpose: a listener published onto the network with nothing behind it fails later,
+from a peer, with a much worse error. Start the service, or fix `local_host`/
+`local_port`.
+
+**`remote_host applies only to the ssh backend`** — on a mesh there is no host to
+name; the service is published on your own node's address. Drop `remote_host` and
+get the address peers should use from
+`SELECT * FROM tunnel_self(secret = '…');`.
+
+**`the SSH server refused to bind remote port N`** — usually one of three things:
+sshd has `AllowTcpForwarding no` (or `local`) and needs `yes`/`remote`; the port is
+already taken on the server; or it is below 1024, which needs root there. Pick a
+free port above 1024, or pass `remote_port = 0` and read the port the server picked
+out of the returned row.
+
+**The export works but only from the SSH server itself** — that is `GatewayPorts no`,
+sshd's default, which binds the forward to the server's loopback. Set
+`GatewayPorts yes` (or `clientspecified` plus `remote_host = '0.0.0.0'`) to let other
+machines reach it. This applies to SSH only; a mesh export is reachable from every
+peer that policy allows.
+
+**`an inbound connection arrived but 127.0.0.1:N refused it`** — the export is fine
+and still listening; the *local* service went away. Restart it; connections will be
+served again without re-running `tunnel_export`.
+
+**`Quack server token must be at least 4 characters long`** — `quack_serve` rejects
+a short `token =>`. It fails the `CALL` but leaves the rest of your script running,
+so the first visible symptom is usually the peer's "Could not connect to server":
+nothing ever started listening. Check the server's own output before blaming the
+tunnel.
+
+**Peer gets a TLS or handshake error attaching over quack** — pass
+`DISABLE_SSL true` in the `ATTACH`. The quack client defaults to HTTPS for any
+non-local address, and the mesh already encrypts the hop. Remember also that
+`quack_serve` mints a random token unless you pass `token => '…'` — the peer needs
+whichever one is in force.
 
 ## Windows
 

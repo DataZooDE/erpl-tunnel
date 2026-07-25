@@ -289,8 +289,8 @@ Happy path (Tailscale):
 LOAD erpl_tunnel;
 CREATE SECRET ts (TYPE tunnel, backend 'tailscale',
                   auth_key 'tskey-auth-…', tags 'tag:duckdb', ephemeral true);
-PRAGMA tunnel_create(secret := 'ts',
-       remote_host := 'duckdb-eu-shard3', remote_port := 4213, local_port := 9000);
+PRAGMA tunnel_create(secret = 'ts',
+       remote_host = 'duckdb-eu-shard3', remote_port = 4213, local_port = 9000);
 -- now: ATTACH 'ducklake://…@localhost:9000' or query quack at localhost:9000
 ```
 
@@ -298,7 +298,7 @@ Discovery then connect:
 
 ```sql
 SELECT host_name, dns_name, mesh_ip, online
-FROM   tunnel_peers(secret := 'ts') WHERE 'tag:duckdb' = ANY(tags);
+FROM   tunnel_peers(secret = 'ts') WHERE 'tag:duckdb' = ANY(tags);
 ```
 
 Error-message bar (illustrative — the *quality* is the requirement):

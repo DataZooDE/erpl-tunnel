@@ -29,7 +29,7 @@ WHERE online AND list_contains(tags, 'tag:duckdb');
 Then dial one by `dns_name` or `mesh_ip`:
 
 ```sql
-PRAGMA tunnel_create(secret = 'ts',
+PRAGMA tunnel_import(secret = 'ts',
     remote_host = 'duckdb-eu-shard3', remote_port = 4213, local_port = 9000);
 ```
 

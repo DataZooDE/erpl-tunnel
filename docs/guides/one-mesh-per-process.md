@@ -29,7 +29,7 @@ PRAGMA tunnel_mesh_activate('tailscale');   -- or 'netbird'
 ```
 
 This surfaces any load/auth problem immediately and pins the one mesh this process
-will use. It's optional — the first `tunnel_create`/`tunnel_peers` on a mesh secret
+will use. It's optional — the first `tunnel_import`/`tunnel_peers` on a mesh secret
 does the same thing lazily.
 
 ## What this means in practice

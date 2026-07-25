@@ -2,7 +2,10 @@
 
 #include "duckdb.hpp"
 #include "tunnel_connection.hpp"
+#include <atomic>
+
 #include "tunnel_handle.hpp"
+#include "ssh_exporter.hpp"
 #ifdef ERPL_TUNNEL_HAS_MESH
 #include "mesh_forwarder.hpp"
 #include "mesh_exporter.hpp"
@@ -48,6 +51,14 @@ public:
     int64_t CreateMeshExport(std::shared_ptr<MeshBackend> backend, int mesh_port,
                              const string &local_host, int local_port);
 #endif
+    // SSH remote-forward: ask the server to bind remote_port and forward back to
+    // local_host:local_port. remote_port 0 lets the server choose.
+    int64_t CreateSshExport(const TunnelAuthParams &auth_params,
+                            const string &local_host, int local_port,
+                            const string &remote_bind_host, int remote_port,
+                            int timeout_seconds = 60);
+    // The port actually bound (matters when remote_port was 0).
+    int GetTunnelBoundPort(int64_t tunnel_id) const;
     bool CloseTunnel(int64_t tunnel_id);
     bool IsTunnelActive(int64_t tunnel_id) const;
     
@@ -68,7 +79,10 @@ private:
     // to IsTunnelActive/ListTunnels/GetTunnelStatus/GetTunnelError/
     // CleanupInactiveTunnels/RemoveTunnel. Keep it one map.
     std::unordered_map<int64_t, std::shared_ptr<TunnelHandle>> tunnels;
-    int64_t next_tunnel_id;
+    // Atomic: ids are handed out from Create*() without holding tunnels_mutex, so a
+    // plain ++ let two concurrent connections receive the SAME id — the second
+    // map insert then silently replaced (and destroyed) the first tunnel.
+    std::atomic<int64_t> next_tunnel_id;
     
     // Helper methods
     int64_t GenerateTunnelId();

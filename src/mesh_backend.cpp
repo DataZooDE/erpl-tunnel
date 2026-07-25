@@ -1,4 +1,7 @@
 #include "mesh_backend.hpp"
+
+#include <map>
+#include <mutex>
 #include "mesh_peers_json.hpp"
 #include "tunnel_secret.hpp"
 
@@ -213,7 +216,45 @@ std::shared_ptr<MeshBackend> MeshBackendFromSecret(ClientContext &context, const
     opts.state_dir = get("state_dir");
     auto eph = get("ephemeral");
     opts.ephemeral = (eph == "true" || eph == "1");
-    return make_uniq<MeshBackend>(std::move(opts));
+
+    // ONE node per secret, for the life of the process.
+    //
+    // This used to build a fresh MeshBackend on every call, which meant every
+    // tunnel_self()/tunnel_peers()/tunnel_import/tunnel_export enrolled a SEPARATE
+    // mesh node, then tore it down when the shared_ptr died. Three consequences,
+    // all bad and only one of them obvious:
+    //   - tunnel_self() reported an address that was not the address the export was
+    //     published on, because they were different nodes. Actively misleading.
+    //   - every call registered a new peer with the control plane (ephemeral peers
+    //     piled up) and started a fresh WireGuard stack.
+    //   - a node was started and stopped just to answer one status query.
+    // Tailscale hid this whenever a state_dir was set — tsnet reuses the stored
+    // identity, so the nodes happened to share an address. NetBird, whose ephemeral
+    // peers get a fresh IP each enrolment, made it visible.
+    //
+    // Keyed on the full option set, not just the secret name, so redefining a
+    // secret yields a new node rather than silently reusing the old credentials.
+    const std::string key = secret_name + "\x1f" + std::to_string(static_cast<int>(opts.kind)) +
+                            "\x1f" + opts.auth_key + "\x1f" + opts.setup_key + "\x1f" +
+                            opts.hostname + "\x1f" + opts.tags + "\x1f" + opts.groups + "\x1f" +
+                            opts.control_url + "\x1f" + opts.mgmt_url + "\x1f" + opts.state_dir +
+                            "\x1f" + (opts.ephemeral ? "1" : "0");
+
+    static std::mutex cache_mu;
+    // Deliberately never destroyed: a MeshBackend destructor calls into the Go
+    // runtime, and running that during static destruction — after the Go runtime
+    // may already be tearing down — is how you get a crash on exit that nobody can
+    // reproduce. The OS reclaims this at process end.
+    static auto &cache = *new std::map<std::string, std::shared_ptr<MeshBackend>>();
+
+    std::lock_guard<std::mutex> lock(cache_mu);
+    auto it = cache.find(key);
+    if (it != cache.end()) {
+        return it->second;
+    }
+    auto backend = std::make_shared<MeshBackend>(std::move(opts));
+    cache.emplace(key, backend);
+    return backend;
 }
 
 namespace {

@@ -117,28 +117,6 @@ void MeshForwarder::AcceptLoop() {
     }
 }
 
-// Write the whole buffer, tolerating short sends. A single send() may transfer
-// fewer bytes than asked; the previous `write(...) != n` test treated that as a
-// fatal error and silently dropped the remainder, corrupting the stream.
-static bool SendAll(socket_t s, const char *buf, size_t len, const std::atomic<bool> &running) {
-    size_t sent = 0;
-    while (sent < len) {
-        if (!running.load()) {
-            return false;
-        }
-        const int n = SocketSend(s, buf + sent, len - sent);
-        if (n > 0) {
-            sent += static_cast<size_t>(n);
-            continue;
-        }
-        if (n < 0 && SocketWouldBlock(LastSocketError())) {
-            continue; // socket is blocking here, but stay correct if that changes
-        }
-        return false;
-    }
-    return true;
-}
-
 void MeshForwarder::Pump(socket_t client_sock, socket_t mesh_sock) {
     // Bidirectional byte pump between the local client and the mesh stream. Both
     // are OS sockets, so recv/send (never read/write, which on Windows only work on
