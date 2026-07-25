@@ -19,24 +19,37 @@ set(ERPL_GO_PIN "1.26.4")     # version downloaded when the system Go is too old
 
 # Pinned SHA-256 of the go${ERPL_GO_PIN} SDK tarballs (from https://go.dev/dl) so the
 # published toolchain is not mutable at download time. Update when ERPL_GO_PIN bumps.
-set(_go_sha_linux_amd64  "1153d3d50e0ac764b447adfe05c2bcf08e889d42a02e0fe0259bd47f6733ad7f")
-set(_go_sha_linux_arm64  "ef758ae7c6cf9267c9c0ef080b8965f453d89ab2d25d9eb22de4405925238768")
-set(_go_sha_darwin_amd64 "05dc9b5f9997744520aaebb3d5deaa7c755371aebbfb7f97c2511a9f3367538d")
-set(_go_sha_darwin_arm64 "b62ad2b6d7d2464f12a5bcad7ff47f19d08325773b5efd21610e445a05a9bf53")
+set(_go_sha_linux_amd64   "1153d3d50e0ac764b447adfe05c2bcf08e889d42a02e0fe0259bd47f6733ad7f")
+set(_go_sha_linux_arm64   "ef758ae7c6cf9267c9c0ef080b8965f453d89ab2d25d9eb22de4405925238768")
+set(_go_sha_darwin_amd64  "05dc9b5f9997744520aaebb3d5deaa7c755371aebbfb7f97c2511a9f3367538d")
+set(_go_sha_darwin_arm64  "b62ad2b6d7d2464f12a5bcad7ff47f19d08325773b5efd21610e445a05a9bf53")
+set(_go_sha_windows_amd64 "3ca8fb4630b07c419cbdd51f754e31363cfcfb83b3a5354d9e895c90be2cc345")
+set(_go_sha_windows_arm64 "62247f56fb7d7b827d237152c4e3fcd69a24d0fa9430dc73dbda7593ae82bc8d")
 
 # --- map host OS/arch to Go's release naming --------------------------------
+# NOTE: on Windows the >= 1.26 floor is not merely about the shims' go.mod lines.
+# Go 1.25.x silently fails to run init() in a c-shared DLL loaded via LoadLibrary
+# (golang/go#75949), so the Go runtime never starts and the shim is dead on
+# arrival. Never lower ERPL_GO_MIN below 1.26 for Windows.
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
     set(_go_os "linux")
 elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
     set(_go_os "darwin")
+elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+    set(_go_os "windows")
 else()
-    message(FATAL_ERROR "erpl_tunnel mesh backends are Linux/macOS only (host: ${CMAKE_HOST_SYSTEM_NAME}).")
+    message(FATAL_ERROR "erpl_tunnel mesh backends: unsupported host ${CMAKE_HOST_SYSTEM_NAME}.")
 endif()
 
 set(_go_arch_raw "${CMAKE_HOST_SYSTEM_PROCESSOR}")
 if(NOT _go_arch_raw)
-    # CMAKE_HOST_SYSTEM_PROCESSOR is empty in `cmake -P` script mode; fall back to uname.
-    execute_process(COMMAND uname -m OUTPUT_VARIABLE _go_arch_raw OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(CMAKE_HOST_WIN32)
+        # No uname on Windows; the environment carries the host arch.
+        set(_go_arch_raw "$ENV{PROCESSOR_ARCHITECTURE}")
+    else()
+        # CMAKE_HOST_SYSTEM_PROCESSOR is empty in `cmake -P` script mode; fall back to uname.
+        execute_process(COMMAND uname -m OUTPUT_VARIABLE _go_arch_raw OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    endif()
 endif()
 if(_go_arch_raw MATCHES "^(x86_64|amd64|AMD64)$")
     set(_go_arch "amd64")
@@ -90,9 +103,17 @@ endif()
 # --- 2) otherwise download a pinned, checksum-verified Go SDK (cached) -------
 if(NOT GO_EXECUTABLE)
     set(_go_root "${CMAKE_BINARY_DIR}/_go_sdk/go${ERPL_GO_PIN}")
-    set(_go_bin "${_go_root}/go/bin/go")
+    # Go ships Windows as a .zip and the binary as go.exe; everywhere else it is a
+    # .tar.gz with a bare `go`. Both archives unpack to the same top-level go/.
+    if(_go_os STREQUAL "windows")
+        set(_go_ext "zip")
+        set(_go_bin "${_go_root}/go/bin/go.exe")
+    else()
+        set(_go_ext "tar.gz")
+        set(_go_bin "${_go_root}/go/bin/go")
+    endif()
     if(NOT EXISTS "${_go_bin}")
-        set(_tar "go${ERPL_GO_PIN}.${_go_os}-${_go_arch}.tar.gz")
+        set(_tar "go${ERPL_GO_PIN}.${_go_os}-${_go_arch}.${_go_ext}")
         set(_url "https://go.dev/dl/${_tar}")
         set(_dl "${CMAKE_BINARY_DIR}/_go_sdk/${_tar}")
         set(_sha "${_go_sha_${_go_os}_${_go_arch}}")
@@ -108,7 +129,9 @@ if(NOT GO_EXECUTABLE)
             message(FATAL_ERROR "Failed to download/verify Go SDK: ${_dlmsg} (${_url})")
         endif()
         file(MAKE_DIRECTORY "${_go_root}")
-        execute_process(COMMAND ${CMAKE_COMMAND} -E tar xzf "${_dl}"
+        # `xf` (not `xzf`): libarchive detects gzip and zip alike, whereas xzf
+        # refuses a zip.
+        execute_process(COMMAND ${CMAKE_COMMAND} -E tar xf "${_dl}"
                         WORKING_DIRECTORY "${_go_root}" RESULT_VARIABLE _xrc)
         if(NOT _xrc EQUAL 0)
             message(FATAL_ERROR "Failed to extract Go SDK: ${_dl}")
