@@ -10,7 +10,6 @@
 
 #include "yyjson.hpp"
 
-#include <unistd.h>
 #include <vector>
 
 using namespace duckdb_yyjson; // NOLINT

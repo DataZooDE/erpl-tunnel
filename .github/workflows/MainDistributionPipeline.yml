@@ -40,6 +40,10 @@ jobs:
         if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
           set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-gnu-unique")
         endif()
+        # Our own pipeline must never publish a silently SSH-only Windows artifact:
+        # without a mingw toolchain the mesh build degrades on purpose (so third-party
+        # builders still get something), and that would otherwise pass as green here.
+        set(ERPL_REQUIRE_MESH ON)
 
   duckdb-v154-deploy:
     name: Deploy (v1.5.4)
@@ -72,6 +76,10 @@ jobs:
         if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
           set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-gnu-unique")
         endif()
+        # Our own pipeline must never publish a silently SSH-only Windows artifact:
+        # without a mingw toolchain the mesh build degrades on purpose (so third-party
+        # builders still get something), and that would otherwise pass as green here.
+        set(ERPL_REQUIRE_MESH ON)
 
   duckdb-v145-deploy:
     name: Deploy (v1.4.5)

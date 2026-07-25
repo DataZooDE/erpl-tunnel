@@ -368,40 +368,12 @@ const MeshApi &MeshLoader::Activate(MeshKind kind) {
         throw InternalException("Tunnel: mesh shim blob missing for " + std::string(MeshKindName(kind)));
     }
 
-    char tmpl[] = "/tmp/erpl_tunnel_meshXXXXXX";
-    int fd = mkstemp(tmpl);
-    if (fd < 0) {
-        throw IOException("Tunnel: could not create temp file for the mesh shim.");
-    }
-    // Restrictive perms: only this user may read/execute the extracted library (NFR-5).
-    fchmod(fd, 0700);
-    {
-        std::ofstream out(tmpl, std::ios::binary | std::ios::trunc);
-        out.write(reinterpret_cast<const char *>(blob), static_cast<std::streamsize>(blob_len));
-    }
-    close(fd);
-
-    void *h = dlopen(tmpl, RTLD_NOW | RTLD_LOCAL);
-    if (h == nullptr) {
-        // Note: dlerror() clears the error, so it must be read exactly once.
-        const char *derr = dlerror();
-        std::string err = derr ? derr : "unknown";
-        ::remove(tmpl);
-        throw IOException("Tunnel: failed to load the " + std::string(MeshKindName(kind)) +
-                          " shim: " + err);
-    }
+    const NativePath path = ExtractShim(kind, blob, blob_len);
+    void *h = LoadShim(path, kind);
 
     // Resolve the C ABI (mesh_shim.h). Any missing symbol is a build error.
     MeshApi api{};
-    auto resolve = [&](const char *name) -> void * {
-        void *sym = dlsym(h, name);
-        if (sym == nullptr) {
-            dlclose(h);
-            ::remove(tmpl);
-            throw IOException("Tunnel: mesh shim is missing symbol '" + std::string(name) + "'.");
-        }
-        return sym;
-    };
+    auto resolve = [&](const char *name) -> void * { return ResolveSymbol(h, name); };
     api.kind = reinterpret_cast<int (*)()>(resolve("mesh_kind"));
     api.node_new = reinterpret_cast<long (*)()>(resolve("mesh_new"));
     api.set_str = reinterpret_cast<int (*)(long, const char *, const char *)>(resolve("mesh_set_str"));
@@ -416,8 +388,7 @@ const MeshApi &MeshLoader::Activate(MeshKind kind) {
     // Sanity: the shim's self-reported kind must match what we asked for.
     const int reported = api.kind();
     if (reported != static_cast<int>(kind)) {
-        dlclose(h);
-        ::remove(tmpl);
+        // No unload here either — the shim's Go runtime is already up (see ResolveSymbol).
         throw InternalException("Tunnel: mesh shim kind mismatch (asked " +
                                 std::to_string(static_cast<int>(kind)) + ", shim reports " +
                                 std::to_string(reported) + ").");
@@ -425,10 +396,15 @@ const MeshApi &MeshLoader::Activate(MeshKind kind) {
 
     handle_ = h;
     api_ = api;
-    extracted_path_ = tmpl;
+#if defined(_WIN32)
+    extracted_path_ = ToUtf8(path);
+#else
+    extracted_path_ = path;
+#endif
     active_kind_ = kind;
-    // The extracted file can be unlinked now; the mapping stays valid until process exit.
-    ::remove(tmpl);
+    // Unix unlinks the extracted file now that it is mapped; Windows keeps the
+    // cache entry (a loaded DLL cannot be deleted, and it is reused next time).
+    AfterLoad(path);
     return api_;
 #endif
 }
