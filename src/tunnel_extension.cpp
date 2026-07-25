@@ -85,7 +85,8 @@ static void RegisterTunnelFunctions(ExtensionLoader &loader) {
     g_tunnel_manager = std::make_unique<TunnelManager>();
 
     // Register pragma functions
-    loader.RegisterFunction(CreateTunnelCreatePragma());
+    loader.RegisterFunction(CreateTunnelImportPragma());
+    loader.RegisterFunction(CreateTunnelCreatePragma()); // deprecated alias
     loader.RegisterFunction(CreateTunnelClosePragma());
     loader.RegisterFunction(CreateTunnelCloseAllPragma());
 #ifdef ERPL_TUNNEL_HAS_MESH

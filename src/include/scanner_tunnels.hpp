@@ -38,14 +38,16 @@ public:
         const auto &tunnel_info = tunnels[current_row];
         output.SetValue(0, 0, Value::BIGINT(tunnel_info.first));                    // tunnel_id
         output.SetValue(1, 0, Value(tunnel_info.second.backend));                   // backend
-        output.SetValue(2, 0, Value(tunnel_info.second.ssh_host));                  // ssh_host
-        output.SetValue(3, 0, Value::INTEGER(tunnel_info.second.ssh_port));         // ssh_port
-        output.SetValue(4, 0, Value(tunnel_info.second.ssh_user));                  // ssh_user
-        output.SetValue(5, 0, Value(tunnel_info.second.remote_host));               // remote_host
-        output.SetValue(6, 0, Value::INTEGER(tunnel_info.second.remote_port));      // remote_port
-        output.SetValue(7, 0, Value::INTEGER(tunnel_info.second.local_port));       // local_port
-        output.SetValue(8, 0, Value(tunnel_info.second.bind_addr));                 // bind_addr
-        output.SetValue(9, 0, Value(tunnel_info.second.status));                    // status
+        output.SetValue(2, 0, Value(tunnel_info.second.direction));                 // direction
+        output.SetValue(3, 0, Value(tunnel_info.second.ssh_host));                  // ssh_host
+        output.SetValue(4, 0, Value::INTEGER(tunnel_info.second.ssh_port));         // ssh_port
+        output.SetValue(5, 0, Value(tunnel_info.second.ssh_user));                  // ssh_user
+        output.SetValue(6, 0, Value(tunnel_info.second.remote_host));               // remote_host
+        output.SetValue(7, 0, Value::INTEGER(tunnel_info.second.remote_port));      // remote_port
+        output.SetValue(8, 0, Value::INTEGER(tunnel_info.second.local_port));       // local_port
+        output.SetValue(9, 0, Value(tunnel_info.second.bind_addr));                 // bind_addr
+        output.SetValue(10, 0, Value(tunnel_info.second.local_host));               // local_host
+        output.SetValue(11, 0, Value(tunnel_info.second.status));                   // status
 
         current_row++;
     }

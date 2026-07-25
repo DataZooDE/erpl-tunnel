@@ -10,7 +10,7 @@
 namespace duckdb {
 
 string TunnelCreate(ClientContext &context, const FunctionParameters &parameters) {
-    PostHogTelemetry::Instance().RecordFunctionCall("tunnel_create");
+    PostHogTelemetry::Instance().RecordFunctionCall("tunnel_import");
 
     // Extract tunnel parameters from named parameters.
     string remote_host;
@@ -35,8 +35,8 @@ string TunnelCreate(ClientContext &context, const FunctionParameters &parameters
 
     if (remote_host.empty() || remote_port == 0 || local_port == 0) {
         throw InvalidInputException(
-            "tunnel_create requires remote_host, remote_port, and local_port. Example:\n"
-            "  PRAGMA tunnel_create(secret='my_secret', remote_host='host.internal', "
+            "tunnel_import requires remote_host, remote_port, and local_port. Example:\n"
+            "  PRAGMA tunnel_import(secret='my_secret', remote_host='host.internal', "
             "remote_port=8000, local_port=9000 [, timeout=60, bind_all=false]);\n"
             "(named parameters use '=' — a PRAGMA does not accept ':=')");
     }
@@ -52,7 +52,7 @@ string TunnelCreate(ClientContext &context, const FunctionParameters &parameters
     // secret (privacy contract). Lets us see backend mix without leaking anything.
     const char *backend_name =
         (mesh_kind == MeshKind::Tailscale) ? "tailscale" : (mesh_kind == MeshKind::NetBird) ? "netbird" : "ssh";
-    PostHogTelemetry::Instance().CaptureFeature("tunnel_create", {{"backend", backend_name}});
+    PostHogTelemetry::Instance().CaptureFeature("tunnel_import", {{"backend", backend_name}});
 
     if (mesh_kind != MeshKind::None) {
         auto backend = MeshBackendFromSecret(context, secret_name);
@@ -60,7 +60,7 @@ string TunnelCreate(ClientContext &context, const FunctionParameters &parameters
                                                        local_port, timeout_seconds, bind_all);
     } else
 #else
-    PostHogTelemetry::Instance().CaptureFeature("tunnel_create", {{"backend", "ssh"}});
+    PostHogTelemetry::Instance().CaptureFeature("tunnel_import", {{"backend", "ssh"}});
 #endif
     {
         auto auth_params = GetTunnelAuthParamsFromContext(context, parameters);
@@ -73,16 +73,22 @@ string TunnelCreate(ClientContext &context, const FunctionParameters &parameters
     return pragma_query;
 }
 
-PragmaFunction CreateTunnelCreatePragma() {
-    auto tunnel_create_pragma = PragmaFunction::PragmaCall("tunnel_create", TunnelCreate, {});
-    tunnel_create_pragma.named_parameters["secret"] = LogicalType::VARCHAR;
-    tunnel_create_pragma.named_parameters["remote_host"] = LogicalType::VARCHAR;
-    tunnel_create_pragma.named_parameters["remote_port"] = LogicalType::INTEGER;
-    tunnel_create_pragma.named_parameters["local_port"] = LogicalType::INTEGER;
-    tunnel_create_pragma.named_parameters["timeout"] = LogicalType::INTEGER;
-    tunnel_create_pragma.named_parameters["bind_all"] = LogicalType::BOOLEAN;
-
-    return tunnel_create_pragma;
+// One handler, registered under two names. `tunnel_import` says which way the
+// tunnel points, which `tunnel_create` never did — that ambiguity is what made the
+// signature hard to read for mesh backends, where the node has its own address.
+// `tunnel_create` stays as an undocumented alias so existing scripts keep working.
+static PragmaFunction MakeImportPragma(const char *name) {
+    auto pragma = PragmaFunction::PragmaCall(name, TunnelCreate, {});
+    pragma.named_parameters["secret"] = LogicalType::VARCHAR;
+    pragma.named_parameters["remote_host"] = LogicalType::VARCHAR;
+    pragma.named_parameters["remote_port"] = LogicalType::INTEGER;
+    pragma.named_parameters["local_port"] = LogicalType::INTEGER;
+    pragma.named_parameters["timeout"] = LogicalType::INTEGER;
+    pragma.named_parameters["bind_all"] = LogicalType::BOOLEAN;
+    return pragma;
 }
+
+PragmaFunction CreateTunnelImportPragma() { return MakeImportPragma("tunnel_import"); }
+PragmaFunction CreateTunnelCreatePragma() { return MakeImportPragma("tunnel_create"); }
 
 } // namespace duckdb 

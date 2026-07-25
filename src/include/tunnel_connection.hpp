@@ -52,6 +52,11 @@ static constexpr const char* kStatusError = "Error";
 struct TunnelConnectionAttributes {
     // Which transport this tunnel uses: "ssh" | "tailscale" | "netbird".
     std::string backend{"ssh"};
+    // Which way the tunnel points:
+    //   "import" — we bind a local port and dial a service on the far side
+    //   "export" — the far side can reach a service running here
+    // Without this, tunnels() cannot distinguish the two and the row is ambiguous.
+    std::string direction{"import"};
     std::string ssh_host;
     int32_t ssh_port{kDefaultSshPort};
     std::string ssh_user;
@@ -61,11 +66,16 @@ struct TunnelConnectionAttributes {
     // Local listener bind address. Defaults to loopback (127.0.0.1) — a security
     // fix over erpl's INADDR_ANY (FR-2/ADR-006). "0.0.0.0" only via explicit opt-in.
     std::string bind_addr{"127.0.0.1"};
+    // For an export: the local service being published. Unused for an import,
+    // where the local side is just bind_addr:local_port.
+    std::string local_host{"127.0.0.1"};
     std::string status;
     std::string error_message;
 
     bool operator==(const TunnelConnectionAttributes& other) const {
         return backend == other.backend &&
+               direction == other.direction &&
+               local_host == other.local_host &&
                ssh_host == other.ssh_host &&
                ssh_port == other.ssh_port &&
                ssh_user == other.ssh_user &&

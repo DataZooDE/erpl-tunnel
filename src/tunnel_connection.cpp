@@ -292,6 +292,18 @@ void TunnelConnection::Close() {
         forward_threads_.clear();
     }
 
+    // Only now that no thread can touch it is the session safe to tear down.
+    if (session_) {
+        libssh2_session_set_timeout(session_, 5000); // bound the disconnect
+        libssh2_session_disconnect(session_, "Shutdown");
+        libssh2_session_free(session_);
+        session_ = nullptr;
+    }
+    if (ssh_socket_ >= 0) {
+        CloseSocket(ssh_socket_);
+        ssh_socket_ = -1;
+    }
+
     is_connected_ = false;
     attributes_.status = kStatusClosed;
 }
