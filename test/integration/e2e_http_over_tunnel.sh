@@ -15,7 +15,9 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-EXT="${1:-$REPO_ROOT/build/release/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension}"
+# Glob rather than hardcode a version/platform directory: DUCKDB_PLATFORM varies
+# by host and the DuckDB version moves. The Makefile passes an explicit path.
+EXT="${1:-$(ls "$REPO_ROOT"/build/release/repository/*/*/erpl_tunnel.duckdb_extension 2>/dev/null | head -1)}"
 DUCKDB_BIN="${DUCKDB_BIN:-$(command -v duckdb || echo "$REPO_ROOT/build/release/duckdb")}"
 SSH_HOST="${ERPL_SSH_HOST:-127.0.0.1}"
 SSH_PORT="${ERPL_SSH_PORT:-2222}"
