@@ -85,9 +85,31 @@ CREATE SECRET ts (TYPE tunnel, backend 'tailscale',
 For real cross-NAT connectivity, Headscale needs a reachable **DERP** relay
 (front it with TLS); two nodes on the same subnet connect directly without it.
 
+## Which way does a tunnel go?
+
+Outbound only: this DuckDB process reaches **out** to a service on a peer.
+
+```
+PRAGMA tunnel_create(secret = 'ts',
+    remote_host = '<the peer>', remote_port = <its port>,   -- what you want to reach
+    local_port  = <a free local port>);                     -- where it shows up for you
+```
+
+Read it as: *"tailnet peer `<the peer>` has something on `<its port>`; give me a
+`localhost:<local_port>` that points at it."* The mesh carries the bytes, so
+`<the peer>` is a MagicDNS name or `100.x` tailnet IP, not a routable public address.
+
+**The other direction is not supported.** Publishing a port from this machine onto
+the tailnet network — so peers you do not know upfront can connect *to* DuckDB — would
+need a listen primitive that the mesh shim does not currently expose (it has
+`dial` only). Your node genuinely is a first-class peer with its own `100.x`
+address, so this is a fair thing to expect; it is a gap, not a design stance.
+`tsnet.Server.Listen` supports it upstream, so it is about surfacing it rather than feasibility.
+
 ## Notes
 
 - **One mesh per process.** A DuckDB process runs Tailscale *or* NetBird, not both
   — see [one mesh per process](one-mesh-per-process.md).
-- **Platform.** Tailscale is available on Linux and macOS builds (not Windows).
+- **Platform.** Tailscale ships on Linux, macOS and Windows. musl and wasm builds
+  are SSH-only.
 - Trouble connecting? See [troubleshooting](troubleshooting.md).

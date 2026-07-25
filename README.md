@@ -133,6 +133,27 @@ artifacts; not in musl/wasm SSH-only builds. Check what your build has with
 `tunnel_create` binds `127.0.0.1` by default; pass `bind_all = true` for all
 interfaces. `timeout` (seconds) bounds how long it waits for the listener.
 
+### Direction: outbound only
+
+Every tunnel goes **one way** — this DuckDB process reaches *out* to a service
+somewhere else:
+
+```
+tunnel_create(remote_host, remote_port, local_port)
+    binds 127.0.0.1:local_port   →   dials remote_host:remote_port over the backend
+```
+
+So `remote_host`/`remote_port` are the service you want to *consume*, and
+`local_port` is the local address you get back for it. The shape comes from SSH
+local forwarding (`ssh -L`), and it is applied uniformly to the mesh backends too.
+
+**Publishing a local port onto the mesh — so other tailnet/NetBird peers can
+connect to *you* — is not supported.** On a mesh your node does have its own
+`100.x` address, so that is a reasonable thing to want; it simply is not
+implemented yet (there is no listen primitive in the mesh shim ABI, only dial).
+If you need it, open an issue — `tsnet` and NetBird's embed client both support
+it upstream, so it is a question of surfacing it, not of feasibility.
+
 ### Secret fields
 
 ```sql

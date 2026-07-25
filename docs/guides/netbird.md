@@ -74,9 +74,31 @@ in-client firewall failing to apply its ACL because the host kernel lacks the
 environment before starting DuckDB — NetBird then applies the ACL in userspace, no
 kernel module needed. Full detail in [troubleshooting](troubleshooting.md).
 
+## Which way does a tunnel go?
+
+Outbound only: this DuckDB process reaches **out** to a service on a peer.
+
+```
+PRAGMA tunnel_create(secret = 'nb',
+    remote_host = '<the peer>', remote_port = <its port>,   -- what you want to reach
+    local_port  = <a free local port>);                     -- where it shows up for you
+```
+
+Read it as: *"NetBird peer `<the peer>` has something on `<its port>`; give me a
+`localhost:<local_port>` that points at it."* The mesh carries the bytes, so
+`<the peer>` is a peer name or `100.x` NetBird IP, not a routable public address.
+
+**The other direction is not supported.** Publishing a port from this machine onto
+the NetBird network — so peers you do not know upfront can connect *to* DuckDB — would
+need a listen primitive that the mesh shim does not currently expose (it has
+`dial` only). Your node genuinely is a first-class peer with its own `100.x`
+address, so this is a fair thing to expect; it is a gap, not a design stance.
+NetBird embed's `ListenTCP`/`Expose` supports it upstream, so it is about surfacing it rather than feasibility.
+
 ## Notes
 
 - **One mesh per process** (see [one mesh per process](one-mesh-per-process.md)).
-- **Platform.** NetBird is available on Linux and macOS builds (not Windows).
+- **Platform.** NetBird ships on Linux, macOS and Windows. musl and wasm builds
+  are SSH-only.
 - **License.** The shim links only NetBird's BSD-3 client code, never the AGPL
   server (see [the audit](../design/NETBIRD_AGPL_AUDIT.md)).
