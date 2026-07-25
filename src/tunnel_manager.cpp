@@ -84,7 +84,7 @@ int64_t TunnelManager::CreateTunnel(const TunnelAuthParams &auth_params,
         // Store the connection (acquire mutex only for this operation)
         {
             std::lock_guard<std::mutex> lock(tunnels_mutex);
-            active_tunnels[tunnel_id] = connection;
+            tunnels[tunnel_id] = std::make_shared<SshTunnelHandle>(connection);
         }
         
         return tunnel_id;
@@ -104,156 +104,108 @@ int64_t TunnelManager::CreateMeshTunnel(std::shared_ptr<MeshBackend> backend,
     fwd->Start(timeout_seconds); // throws actionably on failure
     {
         std::lock_guard<std::mutex> lock(tunnels_mutex);
-        mesh_tunnels[tunnel_id] = std::move(fwd);
+        tunnels[tunnel_id] = std::move(fwd);
     }
     return tunnel_id;
 }
 #endif
 
 bool TunnelManager::CloseTunnel(int64_t tunnel_id) {
-#ifdef ERPL_TUNNEL_HAS_MESH
-    {
-        // Mesh tunnel?
-        std::shared_ptr<MeshForwarder> mesh_to_close;
-        {
-            std::lock_guard<std::mutex> lock(tunnels_mutex);
-            auto it = mesh_tunnels.find(tunnel_id);
-            if (it != mesh_tunnels.end()) {
-                mesh_to_close = it->second;
-                mesh_tunnels.erase(it);
-            }
-        }
-        if (mesh_to_close) {
-            mesh_to_close->Close();
-            return true;
-        }
-    }
-#endif
-    std::shared_ptr<TunnelConnection> connection_to_close;
-    
+    // One lookup covers SSH, mesh and exported listeners alike.
+    std::shared_ptr<TunnelHandle> to_close;
     {
         std::lock_guard<std::mutex> lock(tunnels_mutex);
-        
-        auto it = active_tunnels.find(tunnel_id);
-        if (it == active_tunnels.end()) {
-            // Don't throw an exception, just return false to indicate tunnel wasn't found
-            return false;
+        auto it = tunnels.find(tunnel_id);
+        if (it == tunnels.end()) {
+            return false; // unknown id is not an error, just "nothing to do"
         }
-        
-        connection_to_close = it->second;
-        
-        // Remove from active tunnels first to prevent other operations
-        active_tunnels.erase(it);
+        to_close = it->second;
+        tunnels.erase(it); // remove first so nothing else can act on it
     }
-    
-    // Close the connection outside of the lock to avoid blocking other operations
+    // Close outside the lock: Close() joins threads and must not block the manager.
     try {
-        connection_to_close->Close();
-    } catch (const std::exception &e) {
-        // Log the error but don't re-throw to avoid blocking the caller
-        // The tunnel is already removed from active_tunnels
+        to_close->Close();
+    } catch (const std::exception &) {
+        // Already unregistered; a failure to tear down cleanly must not propagate.
     }
-    
     return true;
 }
 
 bool TunnelManager::IsTunnelActive(int64_t tunnel_id) const {
     std::lock_guard<std::mutex> lock(tunnels_mutex);
-    
-    auto it = active_tunnels.find(tunnel_id);
-    if (it == active_tunnels.end()) {
-        return false;
-    }
-    
-    return it->second->IsConnected();
+    auto it = tunnels.find(tunnel_id);
+    return it != tunnels.end() && it->second->IsActive();
 }
 
 std::vector<std::pair<int64_t, string>> TunnelManager::ListTunnels() const {
-    // Try to acquire the mutex with a timeout
+    // try_to_lock: listing must never block a create/close.
     std::unique_lock<std::mutex> lock(tunnels_mutex, std::try_to_lock);
-    
     if (!lock.owns_lock()) {
-        // If we can't acquire the mutex, return empty result
         return {};
     }
-    
     std::vector<std::pair<int64_t, string>> result;
-    for (const auto &pair : active_tunnels) {
-        // Get the actual status from the tunnel connection
+    result.reserve(tunnels.size());
+    for (const auto &pair : tunnels) {
         result.emplace_back(pair.first, pair.second->GetStatus());
     }
-    
     return result;
 }
 
 std::vector<std::pair<int64_t, TunnelConnectionAttributes>> TunnelManager::ListTunnelsWithDetails() const {
-    // Try to acquire the mutex with a timeout
     std::unique_lock<std::mutex> lock(tunnels_mutex, std::try_to_lock);
-    
     if (!lock.owns_lock()) {
-        // If we can't acquire the mutex, return empty result
         return {};
     }
-    
     std::vector<std::pair<int64_t, TunnelConnectionAttributes>> result;
-    for (const auto &pair : active_tunnels) {
-        // Get the detailed attributes from the tunnel connection
+    result.reserve(tunnels.size());
+    for (const auto &pair : tunnels) {
         result.emplace_back(pair.first, pair.second->GetAttributes());
     }
-#ifdef ERPL_TUNNEL_HAS_MESH
-    for (const auto &pair : mesh_tunnels) {
-        result.emplace_back(pair.first, pair.second->GetAttributes());
-    }
-#endif
-
     return result;
 }
 
 std::string TunnelManager::GetTunnelStatus(int64_t tunnel_id) const {
     std::lock_guard<std::mutex> lock(tunnels_mutex);
-    
-    auto it = active_tunnels.find(tunnel_id);
-    if (it == active_tunnels.end()) {
-        return "Not found";
-    }
-    
-    return it->second->GetStatus();
+    auto it = tunnels.find(tunnel_id);
+    return it == tunnels.end() ? "Not found" : it->second->GetStatus();
 }
 
 std::string TunnelManager::GetTunnelError(int64_t tunnel_id) const {
     std::lock_guard<std::mutex> lock(tunnels_mutex);
-    
-    auto it = active_tunnels.find(tunnel_id);
-    if (it == active_tunnels.end()) {
-        return "Tunnel not found";
-    }
-    
-    return it->second->GetErrorMessage();
+    auto it = tunnels.find(tunnel_id);
+    return it == tunnels.end() ? "Tunnel not found" : it->second->GetErrorMessage();
 }
 
 void TunnelManager::CloseAllTunnels() {
-    std::lock_guard<std::mutex> lock(tunnels_mutex);
-
-    for (auto &pair : active_tunnels) {
-        pair.second->Close();
+    // Move the handles out under the lock, then close them without holding it —
+    // Close() joins threads and could otherwise deadlock against anything that
+    // needs the manager while shutting down.
+    std::vector<std::shared_ptr<TunnelHandle>> to_close;
+    {
+        std::lock_guard<std::mutex> lock(tunnels_mutex);
+        to_close.reserve(tunnels.size());
+        for (auto &pair : tunnels) {
+            to_close.push_back(pair.second);
+        }
+        tunnels.clear();
     }
-    active_tunnels.clear();
-#ifdef ERPL_TUNNEL_HAS_MESH
-    for (auto &pair : mesh_tunnels) {
-        pair.second->Close();
+    for (auto &h : to_close) {
+        try {
+            h->Close();
+        } catch (const std::exception &) {
+            // Best effort; keep closing the rest.
+        }
     }
-    mesh_tunnels.clear();
-#endif
 }
 
 void TunnelManager::CleanupInactiveTunnels() {
     std::lock_guard<std::mutex> lock(tunnels_mutex);
-    
-    auto it = active_tunnels.begin();
-    while (it != active_tunnels.end()) {
-        if (!it->second->IsConnected()) {
+    for (auto it = tunnels.begin(); it != tunnels.end();) {
+        // IsActive() means "still doing its job", not "has live connections" — an
+        // idle exported listener is healthy and must not be reaped here.
+        if (!it->second->IsActive()) {
             it->second->Close();
-            it = active_tunnels.erase(it);
+            it = tunnels.erase(it);
         } else {
             ++it;
         }
@@ -265,10 +217,10 @@ int64_t TunnelManager::GenerateTunnelId() {
 }
 
 void TunnelManager::RemoveTunnel(int64_t tunnel_id) {
-    auto it = active_tunnels.find(tunnel_id);
-    if (it != active_tunnels.end()) {
+    auto it = tunnels.find(tunnel_id);
+    if (it != tunnels.end()) {
         it->second->Close();
-        active_tunnels.erase(it);
+        tunnels.erase(it);
     }
 }
 

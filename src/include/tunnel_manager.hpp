@@ -2,6 +2,7 @@
 
 #include "duckdb.hpp"
 #include "tunnel_connection.hpp"
+#include "tunnel_handle.hpp"
 #ifdef ERPL_TUNNEL_HAS_MESH
 #include "mesh_forwarder.hpp"
 #endif
@@ -55,10 +56,11 @@ public:
 
 private:
     mutable std::mutex tunnels_mutex;
-    std::unordered_map<int64_t, std::shared_ptr<TunnelConnection>> active_tunnels;
-#ifdef ERPL_TUNNEL_HAS_MESH
-    std::unordered_map<int64_t, std::shared_ptr<MeshForwarder>> mesh_tunnels;
-#endif
+    // ONE map over TunnelHandle, not one per transport. Two maps meant six of the
+    // methods below only ever consulted the SSH one, so mesh tunnels were invisible
+    // to IsTunnelActive/ListTunnels/GetTunnelStatus/GetTunnelError/
+    // CleanupInactiveTunnels/RemoveTunnel. Keep it one map.
+    std::unordered_map<int64_t, std::shared_ptr<TunnelHandle>> tunnels;
     int64_t next_tunnel_id;
     
     // Helper methods

@@ -4,19 +4,10 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/main/secret/secret_manager.hpp"
 
-#ifdef WIN32
-    #include <winsock2.h>
-    #include <ws2tcpip.h>
-    #pragma comment(lib, "ws2_32.lib")
-#else
-    #include <arpa/inet.h>
-    #include <netdb.h>
-    #include <unistd.h>
-    #include <fcntl.h>
-    #include <sys/select.h>
-#endif
+#include "socket_compat.hpp"
 
 #include <chrono>
+#include <mutex>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -24,61 +15,31 @@
 
 namespace duckdb {
 
-// Small cross-platform socket helpers so the SSH data path builds on both Winsock
-// and BSD sockets. Winsock diverges in three ways we care about: setsockopt takes
-// a char*, socket I/O uses recv/send (read/write only work on CRT fds), and the
-// last error comes from WSAGetLastError() with WSAE* codes rather than errno.
-namespace {
-inline int LastSocketError() {
-#ifdef WIN32
-    return WSAGetLastError();
-#else
-    return errno;
-#endif
+// libssh2 is initialised once per process, never torn down.
+//
+// This used to be a per-object libssh2_init()/libssh2_exit() pair (plus
+// WSAStartup/WSACleanup), which meant destroying ONE tunnel called libssh2_exit()
+// and WSACleanup() out from under every other tunnel still running in the process.
+// Both are refcounted by some implementations and not by others, so it ranged from
+// harmless to a crash depending on the build. Neither is safe to pair per object
+// when tunnels are independent and concurrent, and there is nothing to gain from
+// unloading them before exit.
+static void EnsureSshSubsystem() {
+    static std::once_flag once;
+    std::call_once(once, []() {
+        EnsureSocketSubsystem(); // process-wide WSAStartup on Windows, no-op elsewhere
+        if (libssh2_init(0) != 0) {
+            throw IOException("Failed to initialize the libssh2 library.");
+        }
+    });
 }
-// True when a non-blocking connect() reports "in progress / would block".
-inline bool SocketConnectInProgress(int err) {
-#ifdef WIN32
-    return err == WSAEWOULDBLOCK || err == WSAEINPROGRESS;
-#else
-    return err == EINPROGRESS || err == EWOULDBLOCK;
-#endif
-}
-// True when a non-blocking accept() reports "no pending connection right now".
-inline bool SocketWouldBlock(int err) {
-#ifdef WIN32
-    return err == WSAEWOULDBLOCK;
-#else
-    return err == EAGAIN || err == EWOULDBLOCK;
-#endif
-}
-} // namespace
 
 TunnelConnection::TunnelConnection() {
-    // Initialize Windows sockets if on Windows
-#ifdef WIN32
-    WSADATA wsa_data;
-    const int wsa_result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
-    if (wsa_result != 0) {
-        throw IOException("Failed to initialize Windows sockets");
-    }
-#endif
-
-    // Initialize libssh2
-    const int init_result = libssh2_init(0);
-    if (init_result != 0) {
-        throw IOException("Failed to initialize libssh2 library");
-    }
+    EnsureSshSubsystem();
 }
 
 TunnelConnection::~TunnelConnection() {
     Close();
-    libssh2_exit();
-
-    // Cleanup Windows sockets if on Windows
-#ifdef WIN32
-    WSACleanup();
-#endif
 }
 
 TunnelConnection::TunnelConnection(TunnelConnection&& other) noexcept
@@ -304,28 +265,20 @@ void TunnelConnection::StopWorker() {
 
 void TunnelConnection::Close() {
     is_running_ = false;
-    
-    // Close SSH session first to unblock any pending operations
-    if (session_) {
-        // Set a timeout for session operations
-        libssh2_session_set_timeout(session_, 5000); // 5 second timeout
-        
-        // Disconnect the session
-        libssh2_session_disconnect(session_, "Shutdown");
-        libssh2_session_free(session_);
-        session_ = nullptr;
-    }
-    
-    // Close the SSH socket
+
+    // Deterministic teardown: the accept loop and every per-connection worker observe
+    // is_running_ == false and return. We JOIN them (erpl detached on a timeout,
+    // leaking threads and fds) — after Close() returns, no tunnel thread is still
+    // executing (FR-5/§8.3).
+    //
+    // The joins MUST happen before the session is freed. ForwardData calls
+    // libssh2_channel_read/write and libssh2_channel_free on channels that hold a
+    // pointer back to the session, so freeing it first left every in-flight worker
+    // dereferencing freed memory — a use-after-free on any close that had live
+    // connections. Shutting the socket down here is what unblocks them promptly.
     if (ssh_socket_ >= 0) {
-        CloseSocket(ssh_socket_);
-        ssh_socket_ = -1;
+        ShutdownWrite(ssh_socket_);
     }
-    
-    // Deterministic teardown: the accept loop and every per-connection worker
-    // observe is_running_ == false and the closed session, then return. We JOIN
-    // them (erpl detached on a timeout, leaking threads and fds) — after Close()
-    // returns, no tunnel thread is still executing (FR-5/§8.3).
     if (worker_thread_.joinable()) {
         worker_thread_.join();
     }

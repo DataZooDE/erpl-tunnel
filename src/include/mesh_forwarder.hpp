@@ -10,6 +10,7 @@
 
 #include "mesh_backend.hpp"
 #include "socket_compat.hpp"
+#include "tunnel_handle.hpp"
 #include "tunnel_connection.hpp" // TunnelConnectionAttributes
 
 #include <atomic>
@@ -21,7 +22,7 @@
 
 namespace duckdb {
 
-class MeshForwarder {
+class MeshForwarder : public TunnelHandle {
 public:
     MeshForwarder(std::shared_ptr<MeshBackend> backend, std::string remote_host, int remote_port,
                   int local_port, bool bind_all);
@@ -34,10 +35,10 @@ public:
     // (bad key / control unreachable / port in use). Waits up to timeout_seconds for
     // the listener to become connectable.
     void Start(int timeout_seconds);
-    void Close();
+    void Close() override;
 
-    TunnelConnectionAttributes GetAttributes() const;
-    bool IsRunning() const { return running_.load(); }
+    TunnelConnectionAttributes GetAttributes() const override;
+    bool IsActive() const override { return running_.load(); }
 
 private:
     void AcceptLoop();
