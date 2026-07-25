@@ -81,6 +81,7 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: '1.26.4' }
       - uses: msys2/setup-msys2@v2
+        id: msys2
         with:
           msystem: MINGW64
           install: mingw-w64-x86_64-gcc
@@ -89,13 +90,29 @@ jobs:
       - name: Build ts_shim.dll (cgo via mingw-w64)
         shell: pwsh
         run: |
-          $gcc = "C:\msys64\mingw64\bin\gcc.exe"
-          if (-not (Test-Path $gcc)) { throw "mingw gcc not found at $gcc" }
-          # cgo needs a real mingw target triple; a stray clang-cl or MSYS gcc would
-          # produce objects the Go linker cannot use.
-          $triple = & $gcc -dumpmachine
-          Write-Host "gcc -dumpmachine = $triple"
-          if ($triple -notmatch 'mingw') { throw "not a mingw toolchain: $triple" }
+          # Runner images move mingw around and ship more than one gcc, so discover
+          # it rather than hardcoding, and verify the target triple: cgo needs a real
+          # mingw-w64 gcc, and a stray clang-cl or MSYS (non-mingw) gcc would emit
+          # objects the Go linker cannot use.
+          $candidates = @(
+            "${{ steps.msys2.outputs.msys2-location }}\mingw64\bin\gcc.exe",
+            "C:\msys64\mingw64\bin\gcc.exe",
+            "C:\mingw64\bin\gcc.exe",
+            "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin\gcc.exe"
+          )
+          $onPath = Get-Command gcc -ErrorAction SilentlyContinue
+          if ($onPath) { $candidates = @($onPath.Source) + $candidates }
+          $gcc = $null
+          foreach ($c in $candidates) {
+            if ($c -and (Test-Path $c)) {
+              $triple = (& $c -dumpmachine 2>$null)
+              Write-Host "candidate $c -> $triple"
+              if ($triple -match 'mingw') { $gcc = $c; break }
+            }
+          }
+          if (-not $gcc) { throw "no mingw-w64 gcc found; tried: $($candidates -join ', ')" }
+          Write-Host "using $gcc"
+          "MINGW_CC=$gcc" | Out-File -FilePath $env:GITHUB_ENV -Append
           $env:CC = $gcc
           $env:CGO_ENABLED = "1"
           $env:GOFLAGS = "-mod=mod"
@@ -120,23 +137,51 @@ jobs:
           cl /nologo /W3 shim\spike_loadlibrary.c /Fe:spike.exe
           .\spike.exe ts_shim.dll 1
 
-  # Does an RCDATA resource survive being linked in through a STATIC library? The
-  # blob sources feed both the loadable extension (a DLL — certainly fine) and the
-  # static extension inside unittest.exe. If resources do not survive the static
-  # path this fails silently and asymmetrically: the shipped extension works while
-  # every mesh SQL test fails. Find out here, not there.
-  rcdata-static:
-    name: RCDATA-in-static-lib probe (Windows)
+  # How to embed the shim blob on Windows so it survives BOTH the loadable
+  # extension (a DLL) and the static extension inside unittest.exe.
+  #
+  # An RCDATA resource was measured first and does NOT survive the static path:
+  # nothing references the .res symbolically, so the linker never pulls it in.
+  # That failure is silent and asymmetric — the shipped DLL works while every mesh
+  # SQL test fails — which is exactly why it is probed rather than assumed.
+  #
+  # This probes the alternative: assemble the blob into a COFF object with .incbin
+  # (the same mechanism the Unix build already uses for ELF/Mach-O) and check that
+  # MSVC's link.exe consumes a mingw-produced, pure-data object.
+  blob-embed:
+    name: Blob-in-static-lib probe (Windows, COFF object)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        id: msys2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc
+          path-type: inherit
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Configure, build and run the probe
         shell: pwsh
         run: |
-          cmake -S test/win/rcdata_static -B build-rcdata -G Ninja
-          cmake --build build-rcdata
-          .\build-rcdata\rcdata_probe.exe
+          $candidates = @(
+            "${{ steps.msys2.outputs.msys2-location }}\mingw64\bin\gcc.exe",
+            "C:\msys64\mingw64\bin\gcc.exe",
+            "C:\mingw64\bin\gcc.exe"
+          )
+          $onPath = Get-Command gcc -ErrorAction SilentlyContinue
+          if ($onPath) { $candidates = @($onPath.Source) + $candidates }
+          $gcc = $null
+          foreach ($c in $candidates) {
+            if ($c -and (Test-Path $c)) {
+              $triple = (& $c -dumpmachine 2>$null)
+              if ($triple -match 'mingw') { $gcc = $c; break }
+            }
+          }
+          if (-not $gcc) { throw "no mingw-w64 gcc found" }
+          Write-Host "using $gcc"
+          cmake -S test/win/blob_embed -B build-blob -G Ninja "-DMINGW_CC=$($gcc -replace '\\','/')"
+          cmake --build build-blob
+          .\build-blob\blob_probe.exe
 
   mesh-e2e:
     name: Lazy-load, latch & Headscale enrollment

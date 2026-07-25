@@ -1,2 +1,0 @@
-/* Mirrors how the mesh shim blob is embedded on Windows. */
-101 RCDATA "payload.bin"
