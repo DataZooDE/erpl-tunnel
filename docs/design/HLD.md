@@ -236,9 +236,14 @@ latch records the active `mesh_kind`:
   embed one shim; `both` embeds two (runtime picks via the latch). All share
   the single name `erpl_tunnel`.
 - **Build matrix (cgo → per-target C toolchain):** `linux/amd64`,
-  `linux/arm64`, `osx/amd64`, `osx/arm64`. Windows deferred (BRD NG5/R6).
+  `linux/arm64`, `osx/amd64`, `osx/arm64`, `windows/amd64`. musl and wasm are
+  SSH-only (Go cgo `c-shared` needs glibc). Windows landed after BRD NG5/R6 was
+  written — see [ADR-013](ADR-013-windows-mesh.md); on Windows the shim is a
+  mingw-built `.dll` loaded with `LoadLibraryW`, and the local stream pair is a
+  loopback TCP pair rather than an `AF_UNIX` socketpair.
 - **Toolchain:** CMake + vcpkg (static triplet) for the C/C++ side;
-  `go build -buildmode=c-shared` (Go ≥ 1.25) per shim (`ts_shim`, `nb_shim`),
+  `go build -buildmode=c-shared` (Go ≥ 1.26 — see ADR-013; 1.25.x does not run
+  `init()` in a c-shared DLL on Windows) per shim (`ts_shim`, `nb_shim`),
   invoked from CMake as custom targets; each resulting `.so`/`.dylib` is
   **code-signed (macOS)** and embedded into the extension as a byte blob.
 - **No runtime files** beyond the extension itself, the **extracted shim**

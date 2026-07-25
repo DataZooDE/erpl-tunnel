@@ -117,6 +117,10 @@ individually addressable. Embedding them **in-process** keeps the promise of
 - **NG5** No Windows first-class support in v1 if it materially delays
   delivery (Go `c-shared` on Windows is the weakest target); Linux + macOS
   are the committed platforms. *(Confirm in planning.)*
+  > **Outcome (2026-07-25): superseded — Windows ships the mesh backends.** It did
+  > not materially delay delivery: SSH on Windows shipped first, and the mesh port
+  > followed once the feasibility spikes passed. See
+  > [ADR-013](ADR-013-windows-mesh.md).
 - **NG6** No self-service relicensing of erpl SSH code beyond the chosen
   license (§11).
 
@@ -357,6 +361,13 @@ Error-message bar (illustrative — the *quality* is the requirement):
   upgrade.
 - **R6 — Windows.** Go `c-shared` on Windows is the weakest target; may slip
   to a later milestone (NG5).
+  > **Retired (2026-07-25).** The risk was real but bounded, and every part of it
+  > was measured rather than assumed: both shims build for `GOOS=windows`
+  > (NetBird included, the biggest unknown), the mingw-built DLL depends only on
+  > `KERNEL32` + UCRT forwarders, and the Go runtime provably initialises under an
+  > MSVC host. Two assumptions did fail and were caught by spikes: an RCDATA
+  > resource does not survive static linking, and Go 1.25.x silently skips
+  > `init()` in a c-shared DLL. See [ADR-013](ADR-013-windows-mesh.md).
 - **R7 — macOS embedded-`.dylib` signing.** The lazily-extracted mesh
   `.dylib` must be code-signed/notarized to `dlopen` cleanly under Gatekeeper;
   and writing an executable library to a temp dir must respect hardened

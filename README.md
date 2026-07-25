@@ -174,7 +174,8 @@ Architecture and the (real-service, no-mock) test story:
 [BRD](docs/design/BRD.md) · [HLD](docs/design/HLD.md) ·
 [implementation plan](docs/design/IMPLEMENTATION_PLAN.md) ·
 [publication plan](docs/design/PUBLICATION_READINESS_PLAN.md) ·
-[ADR-013: mesh on Windows](docs/design/ADR-013-windows-mesh.md).
+[ADR-013: mesh on Windows](docs/design/ADR-013-windows-mesh.md) ·
+[what is verified where](docs/design/VERIFICATION.md).
 
 ## License
 

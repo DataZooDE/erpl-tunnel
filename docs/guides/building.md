@@ -50,3 +50,6 @@ make e2e               # real HTTP payload through an SSH tunnel
 Mesh data-plane tests (real Headscale / self-hosted NetBird, no mocks) live in
 `test/integration/`; see the Makefile targets `mesh_e2e`, `latch_test`,
 `ts_dataplane`, `nb_dataplane`, `lazy_load_test`, `zero_dep`.
+
+What each of these actually proves, and which platforms are
+covered: [docs/design/VERIFICATION.md](../design/VERIFICATION.md).
