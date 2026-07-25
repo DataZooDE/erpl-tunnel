@@ -17,15 +17,6 @@ Three transports, one small SQL surface:
 - **Tailscale** — an in-process `tsnet` node; reach any peer on your tailnet.
 - **NetBird** — an in-process `client/embed` node; reach any peer on your network.
 
-```sql
-LOAD erpl_tunnel;
-CREATE SECRET bastion (TYPE ssh_tunnel, host 'bastion.example.com',
-                       user 'jump', password '…');
-PRAGMA tunnel_import(secret = 'bastion',
-       remote_host = 'sap.internal', remote_port = 3300, local_port = 9001);
--- the private SAP gateway is now at localhost:9001
-```
-
 ## ✨ Highlights
 
 - **One `localhost:PORT` for anything** — the tunnel forwards raw TCP, so it works
