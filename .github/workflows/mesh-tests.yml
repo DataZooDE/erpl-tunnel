@@ -69,6 +69,75 @@ jobs:
       - name: Build Tailscale shim + run dlopen spike
         run: make spike
 
+  # The Windows go/no-go: can a mingw-built Go c-shared DLL be LoadLibrary'd by an
+  # MSVC host and actually RUN? Go 1.25.x loads such a DLL and resolves its symbols
+  # but never runs init(), leaving the runtime dead (golang/go#75949, fixed in 1.26)
+  # — so the spike asserts Go behaviour, not merely that the library loaded.
+  spike-windows:
+    name: Go-in-LoadLibrary spike (Windows, R1)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.26.4' }
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc
+          path-type: inherit
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Build ts_shim.dll (cgo via mingw-w64)
+        shell: pwsh
+        run: |
+          $gcc = "C:\msys64\mingw64\bin\gcc.exe"
+          if (-not (Test-Path $gcc)) { throw "mingw gcc not found at $gcc" }
+          # cgo needs a real mingw target triple; a stray clang-cl or MSYS gcc would
+          # produce objects the Go linker cannot use.
+          $triple = & $gcc -dumpmachine
+          Write-Host "gcc -dumpmachine = $triple"
+          if ($triple -notmatch 'mingw') { throw "not a mingw toolchain: $triple" }
+          $env:CC = $gcc
+          $env:CGO_ENABLED = "1"
+          $env:GOFLAGS = "-mod=mod"
+          $env:GOTOOLCHAIN = "local"
+          # Static libgcc keeps the shim self-contained: it is extracted alone to a
+          # cache dir at runtime, so it must not need libgcc_s_seh-1.dll beside it.
+          $env:CGO_LDFLAGS = "-static-libgcc"
+          Push-Location shim/ts
+          go build -buildmode=c-shared -o "$env:GITHUB_WORKSPACE\ts_shim.dll" .
+          Pop-Location
+      - name: Assert the shim has no non-system dependencies (zero-dependency NFR)
+        shell: pwsh
+        run: |
+          $deps = & dumpbin /dependents ts_shim.dll | Out-String
+          Write-Host $deps
+          foreach ($bad in @('libgcc', 'libwinpthread', 'libstdc++', 'msys-')) {
+            if ($deps -match $bad) { throw "shim depends on $bad — it would not load on a clean machine" }
+          }
+      - name: Build the spike with MSVC and run it
+        shell: pwsh
+        run: |
+          cl /nologo /W3 shim\spike_loadlibrary.c /Fe:spike.exe
+          .\spike.exe ts_shim.dll 1
+
+  # Does an RCDATA resource survive being linked in through a STATIC library? The
+  # blob sources feed both the loadable extension (a DLL — certainly fine) and the
+  # static extension inside unittest.exe. If resources do not survive the static
+  # path this fails silently and asymmetrically: the shipped extension works while
+  # every mesh SQL test fails. Find out here, not there.
+  rcdata-static:
+    name: RCDATA-in-static-lib probe (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Configure, build and run the probe
+        shell: pwsh
+        run: |
+          cmake -S test/win/rcdata_static -B build-rcdata -G Ninja
+          cmake --build build-rcdata
+          .\build-rcdata\rcdata_probe.exe
+
   mesh-e2e:
     name: Lazy-load, latch & Headscale enrollment
     runs-on: ubuntu-latest

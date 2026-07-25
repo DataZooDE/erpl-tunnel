@@ -131,7 +131,7 @@ nb_dataplane: nb_seeder
 core_tests:
 	mkdir -p build
 	g++ -std=c++17 -O0 -g \
-	    -Isrc/include -Iduckdb/third_party/yyjson/include -Iduckdb/third_party/catch \
+	    -Iduckdb/src/include -Isrc/include -Iduckdb/third_party/yyjson/include -Iduckdb/third_party/catch \
 	    test/cpp/test_mesh_peers_json.cpp src/mesh_peers_json.cpp duckdb/third_party/yyjson/yyjson.cpp \
 	    -o build/core_tests
 	build/core_tests
