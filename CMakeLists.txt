@@ -59,6 +59,7 @@ set(EXTENSION_SOURCES
     src/pragma_tunnel_close.cpp
     src/pragma_tunnel_close_all.cpp
     src/scanner_tunnels.cpp
+    src/pragma_tunnel_export.cpp
 )
 
 # --- Mesh backends: Unix-only (Go c-shared shims use socketpair/AF_UNIX + dlopen) --
@@ -86,6 +87,7 @@ if(MESH_WANTED)
         src/mesh_loader.cpp
         src/mesh_backend.cpp
         src/mesh_forwarder.cpp
+        src/mesh_exporter.cpp
         src/mesh_peers_json.cpp
         duckdb/third_party/yyjson/yyjson.cpp)
     list(APPEND MESH_DEFINES ERPL_TUNNEL_HAS_MESH)

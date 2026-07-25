@@ -5,6 +5,7 @@
 #include "tunnel_handle.hpp"
 #ifdef ERPL_TUNNEL_HAS_MESH
 #include "mesh_forwarder.hpp"
+#include "mesh_exporter.hpp"
 #endif
 #include <unordered_map>
 #include <mutex>
@@ -40,6 +41,12 @@ public:
     int64_t CreateMeshTunnel(std::shared_ptr<MeshBackend> backend,
                              const string &remote_host, int remote_port, int local_port,
                              int timeout_seconds = 60, bool bind_all = false);
+#endif
+#ifdef ERPL_TUNNEL_HAS_MESH
+    // Publish local_host:local_port on the mesh at mesh_port. Shares the tunnel id
+    // space with imports, so tunnel_close/tunnels() treat both alike.
+    int64_t CreateMeshExport(std::shared_ptr<MeshBackend> backend, int mesh_port,
+                             const string &local_host, int local_port);
 #endif
     bool CloseTunnel(int64_t tunnel_id);
     bool IsTunnelActive(int64_t tunnel_id) const;

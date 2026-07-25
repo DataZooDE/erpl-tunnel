@@ -93,6 +93,23 @@ MeshStream MeshBackend::Dial(const std::string &host, int port) {
     return stream;
 }
 
+long MeshBackend::Export(int mesh_port, const std::string &local_host, int local_port) {
+    EnsureUp();
+    std::lock_guard<std::mutex> lock(mu_);
+    long handle = 0;
+    if (api_->mesh_export(node_, mesh_port, local_host.c_str(), local_port, &handle) != 0) {
+        throw IOException("Tunnel: " + LastError());
+    }
+    return handle;
+}
+
+void MeshBackend::Unexport(long export_handle) noexcept {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (api_ != nullptr && node_ > 0 && export_handle != 0) {
+        api_->mesh_unexport(node_, export_handle); // idempotent by contract
+    }
+}
+
 // Cap the buffer the shim can ask us to allocate. `need` crosses the C ABI from the
 // Go shim; a bug there must not drive unbounded allocation. 64 MB is far beyond any
 // realistic peer-status payload (thousands of peers).

@@ -36,6 +36,10 @@ struct MeshApi {
     int (*set_bool)(long, const char *, int);
     int (*up)(long);
     int (*dial)(long, const char *, int, MeshStream *);
+    // Inbound: publish local_host:local_port on the mesh at mesh_port. Returns an
+    // opaque export handle; no stream crosses the ABI (the proxy lives in Go).
+    int (*mesh_export)(long, int, const char *, int, long *);
+    int (*mesh_unexport)(long, long);
     int (*peers_json)(long, char *, size_t, size_t *);
     int (*self_json)(long, char *, size_t, size_t *);
     int (*errmsg)(long, char *, size_t);

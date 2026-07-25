@@ -110,6 +110,21 @@ int64_t TunnelManager::CreateMeshTunnel(std::shared_ptr<MeshBackend> backend,
 }
 #endif
 
+#ifdef ERPL_TUNNEL_HAS_MESH
+int64_t TunnelManager::CreateMeshExport(std::shared_ptr<MeshBackend> backend, int mesh_port,
+                                        const string &local_host, int local_port) {
+    int64_t tunnel_id = GenerateTunnelId();
+    auto exporter = std::make_shared<MeshExporter>(std::move(backend), mesh_port,
+                                                   local_host, local_port);
+    exporter->Start(); // throws actionably on failure
+    {
+        std::lock_guard<std::mutex> lock(tunnels_mutex);
+        tunnels[tunnel_id] = std::move(exporter);
+    }
+    return tunnel_id;
+}
+#endif
+
 bool TunnelManager::CloseTunnel(int64_t tunnel_id) {
     // One lookup covers SSH, mesh and exported listeners alike.
     std::shared_ptr<TunnelHandle> to_close;

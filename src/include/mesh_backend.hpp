@@ -59,6 +59,11 @@ public:
     // owns and closes (fd on Unix, Winsock SOCKET on Windows).
     MeshStream Dial(const std::string &host, int port);
 
+    // Publish local_host:local_port on this node's mesh address at mesh_port.
+    // Returns an opaque handle to pass to Unexport. Throws actionably on failure.
+    long Export(int mesh_port, const std::string &local_host, int local_port);
+    void Unexport(long export_handle) noexcept;
+
     // Peer-local status as JSON (array for peers, object for self). Brings the
     // node up if needed.
     std::string PeersJson();

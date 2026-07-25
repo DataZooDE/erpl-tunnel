@@ -380,6 +380,8 @@ const MeshApi &MeshLoader::Activate(MeshKind kind) {
     api.set_bool = reinterpret_cast<int (*)(long, const char *, int)>(resolve("mesh_set_bool"));
     api.up = reinterpret_cast<int (*)(long)>(resolve("mesh_up"));
     api.dial = reinterpret_cast<int (*)(long, const char *, int, MeshStream *)>(resolve("mesh_dial"));
+    api.mesh_export = reinterpret_cast<int (*)(long, int, const char *, int, long *)>(resolve("mesh_export"));
+    api.mesh_unexport = reinterpret_cast<int (*)(long, long)>(resolve("mesh_unexport"));
     api.peers_json = reinterpret_cast<int (*)(long, char *, size_t, size_t *)>(resolve("mesh_peers_json"));
     api.self_json = reinterpret_cast<int (*)(long, char *, size_t, size_t *)>(resolve("mesh_self_json"));
     api.errmsg = reinterpret_cast<int (*)(long, char *, size_t)>(resolve("mesh_errmsg"));

@@ -8,12 +8,24 @@ namespace duckdb {
 SecretMatch LookupTunnelSecret(ClientContext &context, const std::string &secret_name) {
     auto &secret_manager = SecretManager::Get(context);
     auto transaction = CatalogTransaction::GetSystemCatalogTransaction(context);
-    // Try the unified 'tunnel' type first, then the 'ssh_tunnel' alias.
-    auto match = secret_manager.LookupSecret(transaction, secret_name, TUNNEL_SECRET_TYPE_ALIAS);
-    if (match.HasMatch()) {
-        return match;
+
+    // Look the secret up by NAME. This used to call LookupSecret(transaction, path,
+    // type), whose second argument is a scope PATH, not a name — and tunnel secrets
+    // are registered with no prefix paths, so every secret matched every path with
+    // the same score and the winner was effectively arbitrary. With one tunnel
+    // secret defined it happened to work; with two, `secret='a'` could silently use
+    // secret 'b' — a different host, different credentials, even a different
+    // backend. Nothing warned, because a valid secret was always returned.
+    auto entry = secret_manager.GetSecretByName(transaction, secret_name);
+    if (entry && entry->secret) {
+        const auto &type = entry->secret->GetType();
+        if (type == TUNNEL_SECRET_TYPE_NAME || type == TUNNEL_SECRET_TYPE_ALIAS) {
+            // score 0 / no matched path: the caller named it explicitly, so there is
+            // nothing to rank it against.
+            return SecretMatch(*entry, 0);
+        }
     }
-    return secret_manager.LookupSecret(transaction, secret_name, TUNNEL_SECRET_TYPE_NAME);
+    return SecretMatch(); // no match
 }
 
 unique_ptr<BaseSecret> CreateTunnelSecretFunction(ClientContext &context, CreateSecretInput &input) {

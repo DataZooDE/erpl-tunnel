@@ -7,6 +7,7 @@
 #include "tunnel_secret.hpp"
 #include "erpl_tunnel_extension.hpp"
 #include "pragma_tunnel_create.hpp"
+#include "pragma_tunnel_export.hpp"
 #include "pragma_tunnel_close.hpp"
 #include "pragma_tunnel_close_all.hpp"
 #include "scanner_tunnels.hpp"
@@ -87,6 +88,7 @@ static void RegisterTunnelFunctions(ExtensionLoader &loader) {
     // Register pragma functions
     loader.RegisterFunction(CreateTunnelImportPragma());
     loader.RegisterFunction(CreateTunnelCreatePragma()); // deprecated alias
+    loader.RegisterFunction(CreateTunnelExportPragma());
     loader.RegisterFunction(CreateTunnelClosePragma());
     loader.RegisterFunction(CreateTunnelCloseAllPragma());
 #ifdef ERPL_TUNNEL_HAS_MESH
