@@ -61,6 +61,56 @@ jobs:
         working-directory: shim/meshpair
         run: go test -race -count=2 ./...
 
+  # SSH is the one backend that ships on every platform, and until now nothing in CI
+  # exercised it: the live-SSH sqllogictests self-skip without ERPL_SSH_HOST, so every
+  # run reported "4 skipped" and no bytes ever crossed an SSH tunnel in CI. This job
+  # brings up the dockerised bastion + private HTTP service and pushes a real payload
+  # through, plus the four integration tests that were skipping.
+  ssh-e2e:
+    name: SSH data plane (real bastion, real payload)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Set up vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$HOME/vcpkg"
+          "$HOME/vcpkg/bootstrap-vcpkg.sh"
+          echo "VCPKG_ROOT=$HOME/vcpkg" >> "$GITHUB_ENV"
+      # SSH-only: no Go, no mesh — this is deliberately the cheapest build that can
+      # still prove the SSH data path, and it doubles as a check that the mesh code
+      # really is compiled out (ERPL_TUNNEL_HAS_MESH) rather than merely unused.
+      - name: Build (MESH_BACKEND=ssh)
+        env: { MESH_BACKEND: ssh, GEN: ninja }
+        run: make debug
+      - name: Bring up the SSH bastion + private HTTP service
+        run: make test_up
+      - name: Real HTTP payload through an SSH tunnel
+        run: make e2e
+      - name: Live-SSH integration tests (these skip without the harness)
+        env:
+          ERPL_SSH_HOST: 127.0.0.1
+          ERPL_SSH_PORT: '2222'
+          ERPL_SSH_USER: root
+          ERPL_SSH_PASSWORD: testpass
+        run: |
+          set -e
+          for t in test/sql/sap_tunnel_basic.test \
+                   test/sql/sap_tunnel_integration_password.test \
+                   test/sql/sap_tunnel_integration_key.test \
+                   test/sql/tunnel_loopback_bind.test; do
+            echo "== $t =="
+            # One at a time: these all bind local_port 9000, so a shared runner needs
+            # the previous listener fully released before the next starts.
+            build/debug/test/unittest "$t"
+            sleep 2
+          done
+      - name: Tear down
+        if: always()
+        run: make test_down
+
   spike:
     name: Go-in-dlopen spike (R1)
     runs-on: ubuntu-latest
@@ -289,6 +339,33 @@ jobs:
           # deliberately provoke, and the pwsh wrapper propagates $LASTEXITCODE. Every
           # assertion above passed, so say so explicitly.
           exit 0
+
+  # macOS shipped the mesh backends from the start but nothing ever verified them at
+  # runtime there — the distribution matrix only proves it compiles and links. This
+  # is the macOS twin of mesh-runtime-windows: does the embedded shim actually
+  # extract, dlopen and start Go inside DuckDB on Mach-O?
+  mesh-runtime-macos:
+    name: Mesh activates at runtime (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.26.4' }
+      - name: Install build deps
+        run: brew install ninja
+      - name: Set up vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$HOME/vcpkg"
+          "$HOME/vcpkg/bootstrap-vcpkg.sh"
+          echo "VCPKG_ROOT=$HOME/vcpkg" >> "$GITHUB_ENV"
+      - name: Build (MESH_BACKEND=both)
+        env: { MESH_BACKEND: both, GEN: ninja }
+        run: make debug
+      - name: Lazy-dlopen / zero-Go proof
+        run: make lazy_load_test
+      - name: Single-mesh latch proof
+        run: make latch_test
 
   mesh-e2e:
     name: Lazy-load, latch & Headscale enrollment

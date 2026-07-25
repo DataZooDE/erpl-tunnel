@@ -36,8 +36,18 @@ for _ in $(seq 1 20); do grep -q LOADED "$OUT" && break; sleep 0.3; done
 grep -q LOADED "$OUT" || { echo "FAIL: extension did not load"; cat "$OUT"; exit 1; }
 
 maps_have_go() {
-  # A dlopen'd Go shim shows up as a mapping of our extracted temp file.
-  grep -Eic "erpl_tunnel_mesh|ts_shim|nb_shim" "/proc/$DUCK_PID/maps" 2>/dev/null
+  # A dlopen'd Go shim shows up as a mapping of the file we extracted. Linux exposes
+  # that through /proc/<pid>/maps; macOS has no procfs, so use lsof, which lists
+  # mapped dylibs for a process we own. Without this the macOS run would silently
+  # report 0 mappings and "prove" laziness by finding nothing at all.
+  if [[ -r "/proc/$DUCK_PID/maps" ]]; then
+    grep -Eic "erpl_tunnel_mesh|ts_shim|nb_shim" "/proc/$DUCK_PID/maps" 2>/dev/null
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -p "$DUCK_PID" 2>/dev/null | grep -Eic "erpl_tunnel_mesh|ts_shim|nb_shim"
+  else
+    echo "FAIL: no way to inspect mappings of pid $DUCK_PID (no procfs, no lsof)" >&2
+    exit 2
+  fi
 }
 
 before="$(maps_have_go)"
