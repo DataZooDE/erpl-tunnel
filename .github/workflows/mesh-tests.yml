@@ -489,6 +489,12 @@ jobs:
       # extension repository being reachable. The script tries `core` before
       # `core_nightly`: quack is in both, but not for the same DuckDB versions —
       # at v1.5.5 core_nightly 404s and core serves it.
+      # The mesh-only SQL assertions. They are gated on ERPL_TUNNEL_MESH precisely
+      # so the musl SSH-only artifact in the release pipeline skips them; this is
+      # the job that has a mesh build and therefore must actually run them.
+      - name: Mesh-only SQL assertions
+        env: { ERPL_TUNNEL_MESH: '1' }
+        run: build/release/test/unittest --test-dir . test/sql/tunnel_export_mesh.test
       - name: quack over the tailnet
         run: |
           BASE_IMAGE=ubuntu:24.04 \

@@ -1,0 +1,39 @@
+# name: test/sql/tunnel_export_mesh.test
+# description: tunnel_export assertions that only hold on a MESH-ENABLED build.
+#              Split out of tunnel_export.test / tunnel_secret_by_name.test because
+#              the release pipeline runs every test/sql/*.test against the musl
+#              SSH-only artifact too, where the mesh branch is compiled out and a
+#              mesh secret silently falls through to the SSH path — producing a
+#              different (correct, but different) error.
+# group: [tunnel]
+
+require erpl_tunnel
+
+# Set in the mesh CI jobs; unset elsewhere, so SSH-only builds skip this file.
+require-env ERPL_TUNNEL_MESH
+
+statement ok
+CREATE SECRET m_ssh (TYPE ssh_tunnel, host 'bastion.invalid', user 'jump', password 'pw');
+
+statement ok
+CREATE SECRET m_mesh (TYPE tunnel, backend 'tailscale', auth_key 'tskey-auth-fake', hostname 'h');
+
+# On a mesh the service is published on this node's own address, so there is no
+# host to name. Naming one must be refused rather than quietly ignored.
+statement error
+PRAGMA tunnel_export(secret='m_mesh', local_port=1, remote_host='1.2.3.4');
+----
+remote_host applies only to the ssh backend
+
+# remote_port = 0 asks a server to allocate a port, which only SSH can do.
+statement error
+PRAGMA tunnel_export(secret='m_mesh', local_port=9494, remote_port=0);
+----
+only the ssh backend can do
+
+# The by-name discriminator in the export direction: with two secrets defined,
+# naming the SSH one must take the SSH path (local probe), not the mesh one.
+statement error
+PRAGMA tunnel_export(secret='m_ssh', local_port=1, remote_host='127.0.0.1');
+----
+nothing is listening on 127.0.0.1:1

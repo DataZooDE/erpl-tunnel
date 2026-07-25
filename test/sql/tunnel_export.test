@@ -68,11 +68,5 @@ PRAGMA tunnel_export(secret='x_ssh', local_port=1, remote_port=0);
 ----
 nothing is listening on 127.0.0.1:1
 
-# ...and a mesh cannot honour it, so it must say so rather than binding port 0.
-statement ok
-CREATE SECRET x_mesh (TYPE tunnel, backend 'tailscale', auth_key 'tskey-auth-fake', hostname 'h');
-
-statement error
-PRAGMA tunnel_export(secret='x_mesh', local_port=9494, remote_port=0);
-----
-only the ssh backend can do
+# Mesh-only assertions live in tunnel_export_mesh.test — they do not hold on an
+# SSH-only build, which the release pipeline also runs.
