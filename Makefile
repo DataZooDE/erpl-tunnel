@@ -49,13 +49,20 @@ e2e integration_tests: export ERPL_SSH_PASSWORD ?= testpass
 e2e: debug
 	DUCKDB_BIN=$(PROJ_DIR)build/debug/duckdb \
 	  test/integration/e2e_http_over_tunnel.sh \
-	  $(PROJ_DIR)build/debug/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+	  $(EXT_DEBUG)
 
 # Run the SSH integration sqllogictests against the debug binary (services must be up).
 .PHONY: integration_tests
 integration_tests: debug
 	@for t in test/sql/sap_tunnel_integration_*.test; do echo "== $$t =="; \
 	  $(UNITTEST) --test-dir . "$$t" || exit 1; done
+
+# Resolve the built extension by globbing rather than hardcoding a platform
+# directory: CI resolves DUCKDB_PLATFORM to things like linux_amd64_gcc4, so a
+# hardcoded .../linux_amd64/... path made these targets fail with "extension not
+# found" even though the build had succeeded.
+EXT_RELEASE = $(firstword $(wildcard $(PROJ_DIR)build/release/repository/*/*/erpl_tunnel.duckdb_extension))
+EXT_DEBUG   = $(firstword $(wildcard $(PROJ_DIR)build/debug/repository/*/*/erpl_tunnel.duckdb_extension))
 
 # --- Mesh backend spikes / proofs (need MESH_BACKEND != ssh) ----------------
 # Standalone dlopen spike (BRD R1): build the Tailscale shim and prove a Go
@@ -73,7 +80,7 @@ spike:
 lazy_load_test:
 	DUCKDB_BIN=$(PROJ_DIR)build/debug/duckdb \
 	  test/integration/lazy_mesh_load.sh \
-	  $(PROJ_DIR)build/debug/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+	  $(EXT_DEBUG)
 
 # Real Tailscale enrollment against a hermetic Headscale (ADR-009). Needs a
 # tailscale build:  MESH_BACKEND=tailscale make debug mesh_e2e
@@ -85,7 +92,7 @@ mesh_down:
 mesh_e2e:
 	DUCKDB_BIN=$(PROJ_DIR)build/debug/duckdb \
 	  test/integration/mesh_e2e_headscale.sh \
-	  $(PROJ_DIR)build/debug/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+	  $(EXT_DEBUG)
 
 # Single-mesh latch proof (ADR-011). Needs a 'both' build:
 #   MESH_BACKEND=both make debug latch_test
@@ -93,7 +100,7 @@ mesh_e2e:
 latch_test:
 	DUCKDB_BIN=$(PROJ_DIR)build/debug/duckdb \
 	  test/integration/single_mesh_latch.sh \
-	  $(PROJ_DIR)build/debug/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+	  $(EXT_DEBUG)
 
 # Zero-dependency proof (NFR-1/M5): the loadable file links only glibc, and loads
 # in a bare, network-isolated container. Needs a RELEASE build: `make release`.
@@ -101,7 +108,7 @@ latch_test:
 zero_dep:
 	DUCKDB_BIN=$(shell command -v duckdb) \
 	  test/integration/zero_dependency.sh \
-	  $(PROJ_DIR)build/release/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+	  $(EXT_RELEASE)
 
 # Tailscale data-plane test (Tier 2): real WireGuard traffic to an official
 # kernel-TUN tailscale peer. Needs a RELEASE tailscale/both build + docker.
@@ -110,7 +117,7 @@ zero_dep:
 ts_dataplane:
 	DUCKDB_BIN=$(shell command -v duckdb) \
 	  test/integration/mesh_dataplane_tailscale.sh \
-	  $(PROJ_DIR)build/release/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+	  $(EXT_RELEASE)
 
 # NetBird data-plane test (Tier 2): real WireGuard to an official kernel-TUN peer,
 # no-IdP self-hosted control plane (seeded store). Builds the seeder if needed.
@@ -123,7 +130,7 @@ nb_seeder:
 nb_dataplane: nb_seeder
 	DUCKDB_BIN=$(shell command -v duckdb) \
 	  test/integration/mesh_dataplane_netbird.sh \
-	  $(PROJ_DIR)build/release/repository/v1.5.4/linux_amd64/erpl_tunnel.duckdb_extension
+	  $(EXT_RELEASE)
 
 # Fast, DuckDB-free C++ unit tests for the pure mesh-peers JSON parser (Catch2,
 # bundled with duckdb). Seconds; no vcpkg, no docker — just needs the duckdb submodule.

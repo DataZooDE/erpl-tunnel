@@ -231,11 +231,11 @@ jobs:
       - name: Mesh SQL surface is present, and Go actually activates
         shell: pwsh
         run: |
-          $ext = "build/release/repository/v1.5.4/windows_amd64/erpl_tunnel.duckdb_extension"
-          if (-not (Test-Path $ext)) {
-            $ext = (Get-ChildItem -Recurse -Filter erpl_tunnel.duckdb_extension build/release |
-                    Select-Object -First 1).FullName
-          }
+          # Glob rather than hardcode: DUCKDB_PLATFORM varies by runner, and the
+          # loadable artifact also appears under build/release/extension/.
+          $ext = (Get-ChildItem -Recurse -Filter erpl_tunnel.duckdb_extension build/release |
+                  Select-Object -First 1).FullName
+          if (-not $ext) { throw "no erpl_tunnel.duckdb_extension under build/release" }
           Write-Host "extension: $ext"
           $duckdb = "build/release/duckdb.exe"
 
@@ -245,7 +245,7 @@ jobs:
           LOAD '$($ext -replace '\\','/')';
           SELECT function_name FROM duckdb_functions() WHERE function_name LIKE 'tunnel_%' ORDER BY 1;
           "@
-          $out = $sql | & $duckdb -unsigned | Out-String
+          $out = $sql | & $duckdb -unsigned 2>&1 | Out-String
           Write-Host $out
           foreach ($fn in @('tunnel_mesh_activate','tunnel_peers','tunnel_self')) {
             if ($out -notmatch [regex]::Escape($fn)) { throw "missing $fn — mesh was not compiled in" }
@@ -257,7 +257,7 @@ jobs:
           LOAD '$($ext -replace '\\','/')';
           PRAGMA tunnel_mesh_activate('tailscale');
           "@
-          $out2 = $sql2 | & $duckdb -unsigned | Out-String
+          $out2 = $sql2 | & $duckdb -unsigned 2>&1 | Out-String
           Write-Host $out2
           if ($out2 -notmatch 'tailscale') { throw "tunnel_mesh_activate('tailscale') did not report success: $out2" }
           if ($out2 -match 'Error') { throw "tunnel_mesh_activate failed: $out2" }
@@ -273,7 +273,7 @@ jobs:
           PRAGMA tunnel_mesh_activate('tailscale');
           PRAGMA tunnel_mesh_activate('netbird');
           "@
-          $out3 = $sql3 | & $duckdb -unsigned | Out-String
+          $out3 = $sql3 | & $duckdb -unsigned 2>&1 | Out-String
           Write-Host $out3
           if ($out3 -notmatch 'start a new session') {
             throw "the single-mesh latch did not refuse the second mesh: $out3"
