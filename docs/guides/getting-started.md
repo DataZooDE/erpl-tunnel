@@ -52,8 +52,18 @@ PRAGMA tunnel_close_all;     -- close all (idempotent — safe if none are open)
 ## Going through a mesh instead of a bastion
 
 If the service is on a **Tailscale** or **NetBird** network, swap the secret — the
-`tunnel_create` call is identical. See [Tailscale](tailscale.md) and
-[NetBird](netbird.md). Before dialing, you can discover what's reachable:
+`tunnel_create` call is identical. The only new thing you need is one credential
+that lets this DuckDB node join the network without an interactive login:
+
+| Network | What you need | Where |
+|---|---|---|
+| Tailscale | an **auth key** (`tskey-auth-…`) | admin console → Settings → **Keys** → *Generate auth key…*, with **Reusable** and **Ephemeral** on, **Tags** empty at first — [step by step](tailscale.md#1-get-an-auth-key) |
+| NetBird | a **setup key** (a UUID) | dashboard → **Setup Keys** → *Create Setup Key*, **Reusable**; then confirm **Access Control** allows the traffic — [step by step](netbird.md#1-get-a-setup-key) |
+
+Both keys are shown **once**, so copy them when created. They go straight into the
+secret and are redacted from `duckdb_secrets()` afterwards.
+
+Before dialing, you can discover what's reachable:
 
 ```sql
 SELECT host_name, mesh_ip, online FROM tunnel_peers(secret = 'ts');

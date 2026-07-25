@@ -76,8 +76,12 @@ PRAGMA tunnel_close_all;        -- tear everything down
 
 ### 2 · Tailscale — reach a peer on your tailnet
 
+Get an auth key: <https://login.tailscale.com/admin/settings/keys> → **Generate
+auth key…** → turn on **Reusable** and **Ephemeral**, leave **Tags** empty for a
+first run (a tagged key is rejected without a matching `tagOwners` ACL entry).
+Copy it — it is shown once. Full walkthrough: [Tailscale guide](docs/guides/tailscale.md).
+
 ```sql
--- Generate a reusable, tagged auth key at https://login.tailscale.com/admin/settings/keys
 CREATE SECRET ts (TYPE tunnel, backend 'tailscale',
     auth_key 'tskey-auth-…', hostname 'duckdb-eu-1', ephemeral true);
 
@@ -89,9 +93,15 @@ PRAGMA tunnel_create(secret = 'ts',
 
 ### 3 · NetBird — reach a peer on your NetBird network
 
+Get a setup key: <https://app.netbird.io> → **Setup Keys** → **Create Setup Key**
+→ make it **Reusable**, optionally auto-assign a group like `duckdb`. Copy it — it
+is shown once. Then check **Access Control → Policies** actually allows that group
+to reach the peer: NetBird is default-deny, so a peer can read *Connected* and
+still be unreachable. Full walkthrough: [NetBird guide](docs/guides/netbird.md).
+
 ```sql
 CREATE SECRET nb (TYPE tunnel, backend 'netbird',
-    setup_key '…', hostname 'duckdb-eu-1');
+    setup_key 'A2C8E62B-38F5-…', hostname 'duckdb-eu-1');
 
 PRAGMA tunnel_create(secret = 'nb',
     remote_host = '100.x.y.z', remote_port = 8000, local_port = 9000);

@@ -5,15 +5,43 @@ Reach any peer on your **tailnet** from DuckDB. The extension runs an in-process
 
 ## 1. Get an auth key
 
-In the Tailscale admin console → **Settings → Keys**
-(<https://login.tailscale.com/admin/settings/keys>), generate an **auth key**.
-Recommended: **reusable**, **ephemeral**, and **tagged** (e.g. `tag:duckdb`) so
-the node auto-cleans and is easy to find. You'll paste it into the secret.
+An **auth key** lets this DuckDB node join your tailnet without an interactive
+login. You need a Tailscale account and a tailnet; the free plan is enough.
 
-> **First time? Start untagged.** A tagged auth key only works if that tag has a
-> `tagOwners` entry in your tailnet ACL — otherwise enrollment is rejected. For
-> your very first run, generate an **untagged** key and omit the `tags` field
-> below; add the tag once you've set up `tagOwners` in the ACL editor.
+1. Sign in at <https://login.tailscale.com>.
+2. Go to **Settings → Keys**
+   (<https://login.tailscale.com/admin/settings/keys>) — *Settings*, not the
+   *Machines* tab.
+3. Click **Generate auth key…**.
+4. Set the options:
+
+   | Option | Set it to | Why |
+   |---|---|---|
+   | **Description** | e.g. `duckdb erpl_tunnel` | so you can find and revoke it later |
+   | **Reusable** | **on** | otherwise the key is consumed by the first node and every later session fails to enroll |
+   | **Ephemeral** | **on** | the node disappears from your machine list shortly after DuckDB exits, instead of piling up dead entries |
+   | **Expiration** | your call (max 90 days) | the key stops working after this; the secret then needs a new one |
+   | **Tags** | **leave empty for your first run** | see the warning below |
+
+5. Click **Generate key** and copy it — it is shown **once**. It looks like
+   `tskey-auth-kXXXXXXCNTRL-XXXXXXXXXXXXXXXXXXXXXX`.
+
+> **Leave tags off until the ACL is ready.** A tagged auth key is rejected unless
+> that tag has a `tagOwners` entry in your tailnet ACL, and the failure surfaces
+> as a generic enrollment error. Get an untagged key working first, then — if you
+> want tags — add to **Access controls**:
+>
+> ```json
+> "tagOwners": { "tag:duckdb": ["autogroup:admin"] }
+> ```
+>
+> and regenerate the key with `tag:duckdb` selected. Tagged nodes also do not
+> expire, which is usually what you want for a long-lived service.
+
+**Self-hosting with Headscale?** Generate the key with
+`headscale preauthkeys create --user <user> --reusable --expiration 24h` and set
+`control_url` on the secret to your Headscale URL — see
+[Self-hosted control (Headscale)](#self-hosted-control-headscale) below.
 
 ## 2. Create the secret
 
