@@ -45,6 +45,44 @@ type node struct {
 	ephemeral  bool
 	up         bool
 	lastErr    string
+	exports    map[C.long]*meshpair.Exporter
+	nextExport C.long
+}
+
+// --- exported listeners (mesh_export) --------------------------------------
+// Kept per node so mesh_close can tear them all down; handles are opaque longs,
+// same convention as node handles, because Go pointers must never cross into C.
+func (n *node) addExport(e *meshpair.Exporter) C.long {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.exports == nil {
+		n.exports = map[C.long]*meshpair.Exporter{}
+	}
+	n.nextExport++
+	h := n.nextExport
+	n.exports[h] = e
+	return h
+}
+
+func (n *node) takeExport(h C.long) *meshpair.Exporter {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	e := n.exports[h]
+	delete(n.exports, h)
+	return e
+}
+
+func (n *node) closeAllExports() {
+	n.mu.Lock()
+	all := make([]*meshpair.Exporter, 0, len(n.exports))
+	for _, e := range n.exports {
+		all = append(all, e)
+	}
+	n.exports = nil
+	n.mu.Unlock()
+	for _, e := range all {
+		e.Close()
+	}
 }
 
 func (n *node) setErr(err error) {
@@ -55,7 +93,7 @@ func (n *node) setErr(err error) {
 
 var (
 	regMu sync.Mutex
-	reg   = map[C.long]*node{}
+	reg          = map[C.long]*node{}
 	nextH C.long = 1
 )
 
@@ -186,6 +224,40 @@ func bridge(local net.Conn, mesh net.Conn) {
 	<-done
 	local.Close()
 	mesh.Close()
+}
+
+//export mesh_export
+func mesh_export(h C.long, meshPort C.int, localHost *C.char, localPort C.int, out *C.long) C.int {
+	n := get(h)
+	if n == nil {
+		return 1
+	}
+	n.mu.Lock()
+	up, srv := n.up, n.srv
+	n.mu.Unlock()
+	if !up || srv == nil {
+		return 1
+	}
+	// ":port" binds this node's own tailnet addresses, which is what a peer dials.
+	ln, err := srv.Listen("tcp", fmt.Sprintf(":%d", int(meshPort)))
+	if err != nil {
+		n.setErr(fmt.Errorf("Tailscale: could not listen on mesh port %d: %w", int(meshPort), err))
+		return 1
+	}
+	*out = n.addExport(meshpair.StartExport(ln, C.GoString(localHost), int(localPort)))
+	return 0
+}
+
+//export mesh_unexport
+func mesh_unexport(h C.long, exportHandle C.long) C.int {
+	n := get(h)
+	if n == nil {
+		return 1
+	}
+	if e := n.takeExport(exportHandle); e != nil {
+		e.Close()
+	}
+	return 0 // idempotent: an unknown handle is not an error
 }
 
 //export mesh_dial
@@ -373,6 +445,7 @@ func mesh_close(h C.long) C.int {
 	n.up = false
 	n.mu.Unlock()
 	if srv != nil {
+		n.closeAllExports()
 		srv.Close()
 	}
 	regMu.Lock()

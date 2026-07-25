@@ -66,6 +66,26 @@ int mesh_up(mesh_node node);
  * goroutine bridges to the userspace mesh connection. */
 int mesh_dial(mesh_node node, const char *host, int port, mesh_stream *stream_out);
 
+/* Publish a local service onto the mesh: listen on mesh_port on THIS node's mesh
+ * address and forward every accepted connection to local_host:local_port.
+ *
+ * Unlike mesh_dial, no stream handle crosses this boundary. The listener, the
+ * accept loop and both ends of every proxied connection live entirely inside Go,
+ * because the whole job is a port-forward and C++ has nothing to add in the middle.
+ * That is deliberate: an accepted connection is born inside Go, so surfacing it to C
+ * would need the socketpair + SCM_RIGHTS trick libtailscale uses — which has no
+ * Windows equivalent. Keeping it in Go makes the three platforms identical.
+ *
+ * On success writes an opaque export handle to *export_out. Handles are scoped to
+ * the node and are released by mesh_unexport, or wholesale by mesh_close. */
+int mesh_export(mesh_node node, int mesh_port, const char *local_host, int local_port,
+                long *export_out);
+
+/* Stop a listener started by mesh_export and drop its accept loop. Idempotent:
+ * unexporting an unknown or already-released handle succeeds. In-flight proxied
+ * connections are closed. */
+int mesh_unexport(mesh_node node, long export_handle);
+
 /* Serialise the peer-local netmap/status as a JSON array of
  *   {backend, host_name, dns_name, mesh_ip, tags, online}
  * into buf (up to len bytes). If the buffer is too small, writes nothing and sets
