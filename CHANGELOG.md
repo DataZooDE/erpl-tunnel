@@ -4,8 +4,8 @@ All notable changes to `erpl_tunnel` are documented here. Versions follow
 `vYYYY.MM.DD` (the date the binary set was cut). Same-day re-cuts append `.N`.
 
 Binaries are self-distributed via [get.erpl.io](http://get.erpl.io) for
-`{linux_amd64, linux_arm64, linux_amd64_musl, osx_amd64, osx_arm64,
-windows_amd64} × {DuckDB v1.4.5, v1.5.5}`. Install with:
+`{linux_amd64, linux_arm64, osx_amd64, osx_arm64, windows_amd64} ×
+{DuckDB v1.4.5, v1.5.5}`. Install with:
 
 ```sql
 INSTALL erpl_tunnel FROM 'http://get.erpl.io';
@@ -13,8 +13,9 @@ LOAD erpl_tunnel;
 ```
 
 DuckDB must be started with `-unsigned` (or `allow_unsigned_extensions`) — the
-self-distributed binaries are not signed with DuckDB's key. musl and wasm builds
-are SSH-only; every other platform carries all three backends.
+self-distributed binaries are not signed with DuckDB's key. Every published
+platform carries all three backends. musl and wasm are **not published** — build
+from source if you need them (musl is SSH-only).
 
 ## v2026.07.26 — first published release: import **and** export
 
