@@ -34,13 +34,25 @@ Three transports, one small SQL surface:
 ## 🚀 Install
 
 ```sql
-INSTALL erpl_tunnel FROM community;
+INSTALL erpl_tunnel FROM 'http://get.erpl.io';
 LOAD erpl_tunnel;
 ```
 
-> **Publication status.** The community-extensions submission is in progress. Until
-> it lands, [build from source](#-build-from-source) and `LOAD` the local
-> `erpl_tunnel.duckdb_extension` (start DuckDB with `-unsigned`).
+Start DuckDB with **`-unsigned`** (or set `allow_unsigned_extensions`) — the
+self-distributed binaries are not signed with DuckDB's key:
+
+```bash
+duckdb -unsigned
+```
+
+> **Publication status.** [get.erpl.io](http://get.erpl.io) is the distribution
+> channel today, covering `{linux_amd64, linux_arm64, linux_amd64_musl, osx_amd64,
+> osx_arm64, windows_amd64} × {DuckDB v1.4.5, v1.5.5}`. The
+> community-extensions submission (which would make `INSTALL erpl_tunnel FROM
+> community` work without `-unsigned`) is still in progress. You can also
+> [build from source](#-build-from-source).
+
+Released versions and what changed: [CHANGELOG.md](CHANGELOG.md).
 
 Platforms: **Linux**, **macOS** and **Windows** all get the three backends
 (SSH + Tailscale + NetBird). musl and wasm builds are SSH-only. One extension,
