@@ -17,6 +17,25 @@ self-distributed binaries are not signed with DuckDB's key. Every published
 platform carries all three backends. musl and wasm are **not published** — build
 from source if you need them (musl is SSH-only).
 
+## v2026.07.30 — community-extensions readiness
+
+- **[build]** `ERPL_REQUIRE_MESH` now defaults **ON**: a build that asks for mesh
+  backends and cannot produce them fails instead of quietly emitting an SSH-only
+  artifact — which built green, loaded fine, and only revealed itself when
+  `tunnel_peers`/`tunnel_self` turned out not to exist. The default lives in CMake
+  because the case that matters is the one where the flags are not ours to set
+  (community-extensions builds from `description.yml`, which cannot pass build
+  options). Opt out explicitly with `MESH_BACKEND=ssh` or
+  `-DERPL_REQUIRE_MESH=OFF`; musl and wasm are unaffected, since they already
+  select `ssh`.
+- **[docs]** The published platform matrix now states what actually ships:
+  `{linux_amd64, linux_arm64, osx_amd64, osx_arm64, windows_amd64} ×
+  {v1.4.5, v1.5.5}`. musl was previously listed but never reached get.erpl.io.
+- **[ci]** The deploy no longer fails on annotated tags. Deriving the version ran
+  `git fetch --tags`, which refuses to replace the commit-ref left by
+  actions/checkout with a tag object ("would clobber existing tag") and killed the
+  upload before it started.
+
 ## v2026.07.26 — first published release: import **and** export
 
 The first binary set published to get.erpl.io.
