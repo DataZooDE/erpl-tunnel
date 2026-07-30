@@ -61,7 +61,8 @@ Kept honest on purpose: an empty cell means *not covered*, not *probably fine*.
 `MainDistributionPipeline.yml` builds and tests the release matrix for DuckDB
 v1.5.x and v1.4 LTS across linux amd64/arm64/musl, osx amd64/arm64 and
 windows amd64. It sets `ERPL_REQUIRE_MESH`, so a Windows build that cannot find a
-mingw toolchain fails loudly instead of silently publishing an SSH-only artifact.
+mingw toolchain fails loudly instead of silently publishing an SSH-only artifact
+(`ERPL_REQUIRE_MESH` defaults ON for every build, not just ours).
 
 ## Running it locally
 

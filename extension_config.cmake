@@ -16,9 +16,10 @@ endif()
 #   musl / wasm          -> 'ssh'  (no Go cgo c-shared there).
 #
 # Windows carried 'ssh' until the stream pair stopped depending on AF_UNIX
-# socketpair (shim/meshpair) and the loader learned LoadLibraryW. It still degrades
-# to SSH-only automatically if no mingw-w64 gcc is available for cgo — see
-# cmake/bootstrap_mingw.cmake. Set ERPL_DISABLE_WINDOWS_MESH to force that.
+# socketpair (shim/meshpair) and the loader learned LoadLibraryW. Without a
+# mingw-w64 gcc for cgo the build now FAILS rather than quietly producing an
+# SSH-only artifact (ERPL_REQUIRE_MESH defaults ON — see CMakeLists.txt); ask for
+# SSH-only explicitly with ERPL_DISABLE_WINDOWS_MESH or MESH_BACKEND=ssh.
 # One extension name, per-platform backend set. Override with `MESH_BACKEND=... make`.
 if(DEFINED ENV{MESH_BACKEND})
     set(_erpl_mesh "$ENV{MESH_BACKEND}")

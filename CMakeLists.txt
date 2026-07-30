@@ -75,10 +75,22 @@ if(MESH_BACKEND STREQUAL "tailscale" OR MESH_BACKEND STREQUAL "netbird" OR MESH_
     set(MESH_WANTED ON)
 endif()
 
+# If a build ASKS for mesh backends, it must get them or fail — a silently
+# SSH-only artifact is the worst outcome, because it builds green, loads fine, and
+# only reveals itself when tunnel_peers/tunnel_self turn out not to exist. That
+# matters most where we do not control the build flags (duckdb community-extensions
+# builds from description.yml, which has no way to pass this), so the safe default
+# has to live here rather than in our own pipeline.
+#
+# Opting out is explicit and easy: build with MESH_BACKEND=ssh to ask for an
+# SSH-only extension (musl/wasm already do this automatically in
+# extension_config.cmake, so they never reach the guard), or pass
+# -DERPL_REQUIRE_MESH=OFF to accept whatever the toolchain can produce.
+option(ERPL_REQUIRE_MESH
+       "Fail the build if the requested mesh backends cannot be produced" ON)
+
 # On Windows cgo needs a mingw-w64 gcc. Resolve it before committing to a mesh
-# build: without one this degrades to SSH-only rather than failing, so third-party
-# builders still get a working extension (our own CI sets ERPL_REQUIRE_MESH so a
-# missing toolchain is loud there).
+# build; without one the build now stops (see ERPL_REQUIRE_MESH above).
 if(MESH_WANTED AND WIN32)
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/bootstrap_mingw.cmake)
 endif()

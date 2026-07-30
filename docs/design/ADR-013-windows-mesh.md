@@ -82,9 +82,13 @@ mingw-produced pure-data object. All three platforms now share one path.
   extension stays MSVC; they meet only over a plain C ABI and OS socket handles —
   no allocation crossing the boundary, no `FILE*`, no C++ objects.
   `cmake/bootstrap_mingw.cmake` finds a toolchain and verifies `-dumpmachine`
-  really reports a mingw triple, and degrades to an SSH-only build if none exists
-  so third-party builders are not blocked. Our own CI sets `ERPL_REQUIRE_MESH` so
-  that fallback can never silently publish a mesh-less artifact.
+  really reports a mingw triple. If none exists the build FAILS: `ERPL_REQUIRE_MESH`
+  defaults ON, because a build that asked for mesh backends and silently produced an
+  SSH-only artifact is the worst outcome — green, loadable, and missing
+  `tunnel_peers`/`tunnel_self` with no explanation. This default matters most where
+  we do not control the flags, such as duckdb community-extensions, whose
+  `description.yml` cannot pass build options. Builders without mingw opt out
+  explicitly with `MESH_BACKEND=ssh` or `-DERPL_REQUIRE_MESH=OFF`.
 - **Go >= 1.26 is mandatory on Windows.** Go 1.25.x loads a `c-shared` DLL and
   resolves its symbols but never runs `init()`, leaving the runtime dead
   ([golang/go#75949](https://github.com/golang/go/issues/75949), fixed in 1.26).

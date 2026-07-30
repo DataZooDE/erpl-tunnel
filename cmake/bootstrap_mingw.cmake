@@ -47,17 +47,23 @@ if(NOT MINGW_CC)
     endif()
 endif()
 
-# 3) no mingw: either fail loudly (our own CI) or fall back to an SSH-only build
-#    (third-party builders, who should still get a working extension).
+# 3) no mingw: stop by default, because MESH_BACKEND asked for mesh backends and we
+#    cannot produce them. Degrading here silently ships an extension whose
+#    tunnel_peers/tunnel_self simply do not exist, which is far harder to diagnose
+#    than a build error naming the missing toolchain.
 if(NOT MINGW_CC)
     if(ERPL_REQUIRE_MESH)
         message(FATAL_ERROR
-            "erpl_tunnel: MESH_BACKEND=${MESH_BACKEND} needs a mingw-w64 gcc for cgo on Windows. "
-            "Install one (e.g. msys2 + mingw-w64-x86_64-gcc) or set ERPL_MINGW_CC.")
+            "erpl_tunnel: MESH_BACKEND=${MESH_BACKEND} needs a mingw-w64 gcc for cgo on Windows, "
+            "and none was found.\n"
+            "  * install one:            msys2 + mingw-w64-x86_64-gcc, or set ERPL_MINGW_CC\n"
+            "  * or build SSH-only:      MESH_BACKEND=ssh\n"
+            "  * or accept a downgrade:  -DERPL_REQUIRE_MESH=OFF")
     endif()
     message(WARNING
-        "erpl_tunnel: no mingw-w64 gcc found — building SSH-only on this Windows host. "
-        "Set ERPL_MINGW_CC (or install msys2 + mingw-w64-x86_64-gcc) to include the mesh backends.")
+        "erpl_tunnel: no mingw-w64 gcc found — building SSH-only on this Windows host "
+        "because ERPL_REQUIRE_MESH=OFF was set. tunnel_peers/tunnel_self will NOT exist "
+        "in this artifact.")
     set(MESH_BACKEND "ssh" CACHE STRING "mesh backends to bundle" FORCE)
     # include() runs in the caller's scope, so a plain set() is what propagates here.
     set(MESH_WANTED OFF)

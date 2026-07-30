@@ -136,7 +136,9 @@ on the next activation.
 
 **`tunnel_peers` / `tunnel_self` / `tunnel_mesh_activate` do not exist** — you are
 on an SSH-only build. On Windows the mesh backends need a mingw-w64 gcc for cgo at
-*build* time; without one the build degrades to SSH-only with a warning. Check
+*build* time; without one the build now FAILS with a message naming the toolchain
+(it used to degrade to SSH-only with a warning, which shipped a mesh-less artifact
+that looked fine until `tunnel_peers` turned out not to exist). Check
 with `SELECT function_name FROM duckdb_functions() WHERE function_name LIKE
 'tunnel_%';` and see [building](building.md).
 
