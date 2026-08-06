@@ -6,10 +6,10 @@
 #include "tunnel_connection.hpp"
 #include "ssh_exporter.hpp"
 #include "telemetry.hpp"
+#include "erpl_tunnel_banner.hpp"
 
 #ifdef ERPL_TUNNEL_HAS_MESH
 #include "mesh_backend.hpp"
-#include "erpl_tunnel_banner.hpp"
 #endif
 
 namespace duckdb {
