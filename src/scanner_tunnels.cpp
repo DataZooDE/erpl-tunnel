@@ -1,6 +1,7 @@
 #include "scanner_tunnels.hpp"
 #include "tunnel_manager.hpp"
 #include "telemetry.hpp"
+#include "erpl_tunnel_banner.hpp"
 
 namespace duckdb {
 
@@ -54,7 +55,8 @@ void ListTunnelsFunction(ClientContext &context, TableFunctionInput &data_p, Dat
 }
 
 TableFunction CreateTunnelsTableFunction() {
-    TableFunction list_tunnels("tunnels", {}, ListTunnelsFunction, ListTunnelsBind);
+    TableFunction list_tunnels("tunnels", {}, DATAZOO_GUARD(ERPL_TUNNEL_BANNER, ListTunnelsFunction),
+                               DATAZOO_GUARD(ERPL_TUNNEL_BANNER, ListTunnelsBind));
     return list_tunnels;
 }
 

@@ -14,6 +14,7 @@
 #include "yyjson.hpp"
 
 #include <vector>
+#include "erpl_tunnel_banner.hpp"
 
 using namespace duckdb_yyjson; // NOLINT
 
@@ -317,7 +318,7 @@ void MeshPeersEmit(ClientContext &, TableFunctionInput &data_p, DataChunk &outpu
 }
 
 TableFunction MakeMeshTableFunction(const char *name, table_function_bind_t bind) {
-    TableFunction fn(name, {}, MeshPeersEmit, bind);
+    TableFunction fn(name, {}, DATAZOO_GUARD(ERPL_TUNNEL_BANNER, MeshPeersEmit), bind);
     fn.named_parameters["secret"] = LogicalType::VARCHAR;
     return fn;
 }
@@ -339,15 +340,17 @@ string MeshActivate(ClientContext &, const FunctionParameters &parameters) {
 }
 
 PragmaFunction CreateMeshActivatePragma() {
-    return PragmaFunction::PragmaCall("tunnel_mesh_activate", MeshActivate, {LogicalType::VARCHAR});
+    return PragmaFunction::PragmaCall("tunnel_mesh_activate",
+                                      DATAZOO_GUARD(ERPL_TUNNEL_BANNER, MeshActivate),
+                                      {LogicalType::VARCHAR});
 }
 
 TableFunction CreateTunnelPeersFunction() {
-    return MakeMeshTableFunction("tunnel_peers", TunnelPeersBind);
+    return MakeMeshTableFunction("tunnel_peers", DATAZOO_GUARD(ERPL_TUNNEL_BANNER, TunnelPeersBind));
 }
 
 TableFunction CreateTunnelSelfFunction() {
-    return MakeMeshTableFunction("tunnel_self", TunnelSelfBind);
+    return MakeMeshTableFunction("tunnel_self", DATAZOO_GUARD(ERPL_TUNNEL_BANNER, TunnelSelfBind));
 }
 
 } // namespace duckdb
