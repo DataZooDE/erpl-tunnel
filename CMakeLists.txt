@@ -48,6 +48,12 @@ include_directories(
 set(DUCKDB_THIRD_PARTY "${CMAKE_CURRENT_SOURCE_DIR}/duckdb/third_party")
 add_subdirectory(posthog-telemetry)
 
+# Feedback banner (header-only). ON here so a printed banner is counted as a
+# banner_shown event through the telemetry instance configured above; it obeys
+# the same erpl_telemetry_enabled opt-out.
+set(DATAZOO_BANNER_TELEMETRY ON CACHE BOOL "" FORCE)
+add_subdirectory(datazoo-banner)
+
 # Base sources — cross-platform (SSH via libssh2 + winsock on Windows). These build
 # on every DuckDB platform.
 set(EXTENSION_SOURCES
@@ -217,8 +223,8 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(${LOADABLE_EXTENSION_NAME} PRIVATE -fno-gnu-unique)
 endif()
 
-target_link_libraries(${EXTENSION_NAME} ${LIBSSH2_TARGET} posthog_telemetry OpenSSL::SSL OpenSSL::Crypto)
-target_link_libraries(${LOADABLE_EXTENSION_NAME} ${LIBSSH2_TARGET} posthog_telemetry OpenSSL::SSL OpenSSL::Crypto)
+target_link_libraries(${EXTENSION_NAME} ${LIBSSH2_TARGET} posthog_telemetry datazoo_banner OpenSSL::SSL OpenSSL::Crypto)
+target_link_libraries(${LOADABLE_EXTENSION_NAME} ${LIBSSH2_TARGET} posthog_telemetry datazoo_banner OpenSSL::SSL OpenSSL::Crypto)
 
 # Per-build mesh backend defines (MESH_HAVE_TAILSCALE / MESH_HAVE_NETBIRD) and the
 # dynamic loader (dlopen/dlsym) used to lazily activate a mesh shim at runtime.

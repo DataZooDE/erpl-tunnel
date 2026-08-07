@@ -15,6 +15,7 @@
 #include "mesh_backend.hpp"
 #endif
 #include "telemetry.hpp"
+#include "erpl_tunnel_banner.hpp"
 
 // Needed for OPENSSL_init_ssl / OPENSSL_INIT_NO_ATEXIT
 #include <openssl/ssl.h>
@@ -58,6 +59,17 @@ std::unique_ptr<TunnelManager> g_tunnel_manager;
 // stamped on telemetry (SetProduct + CaptureExtensionLoad). Bump on release.
 static constexpr const char *ERPL_TUNNEL_VERSION = "2026.07.24";
 
+} // namespace duckdb
+
+// Deliberately outside namespace duckdb: the banner library is DuckDB-agnostic
+// (the same header serves erpl-adt and flapi), and keeping the object in the
+// global namespace lets guarded translation units refer to it without dragging
+// duckdb:: into the banner's own template machinery.
+const datazoo::BannerInfo ERPL_TUNNEL_BANNER {"erpl_tunnel", duckdb::ERPL_TUNNEL_VERSION,
+                                              "https://github.com/DataZooDE/erpl-tunnel"};
+
+namespace duckdb {
+
 static void OnTelemetryEnabled(ClientContext &context, SetScope scope, Value &parameter)
 {
     PostHogTelemetry::Instance().SetEnabled(parameter.GetValue<bool>());
@@ -74,8 +86,9 @@ static void RegisterConfiguration(ExtensionLoader &loader)
     auto &config = DBConfig::GetConfig(instance);
     config.AddExtensionOption("erpl_telemetry_enabled", "Enable ERPL telemetry, see https://erpl.io/telemetry for details.", 
                               LogicalType::BOOLEAN, Value(true), OnTelemetryEnabled);
-    config.AddExtensionOption("erpl_telemetry_key", "Telemetry key, see https://erpl.io/telemetry for details.", LogicalType::VARCHAR, 
+    config.AddExtensionOption("erpl_telemetry_key", "Telemetry key, see https://erpl.io/telemetry for details.", LogicalType::VARCHAR,
                               Value("phc_t3wwRLtpyEmLHYaZCSszG0MqVr74J6wnCrj9D41zk2t"), OnAPIKey);
+    datazoo::RegisterBannerOption(loader);
 }
 
 static void RegisterTunnelFunctions(ExtensionLoader &loader) {
@@ -162,6 +175,11 @@ static void LoadInternal(ExtensionLoader &loader)
 
     RegisterConfiguration(loader);
     RegisterTunnelFunctions(loader);
+
+    // Last, so a load that fails earlier never advertises itself. Silent unless
+    // stderr is a terminal and the ~/.duckdb stamp is over a day old, so piped
+    // CLI output, notebooks, CI and the test suite see nothing.
+    datazoo::ShowBanner(ERPL_TUNNEL_BANNER);
 }
 
 void ErplTunnelExtension::Load(ExtensionLoader &loader) {

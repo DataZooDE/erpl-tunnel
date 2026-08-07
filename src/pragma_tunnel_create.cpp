@@ -6,6 +6,7 @@
 #include "mesh_backend.hpp"
 #endif
 #include "telemetry.hpp"
+#include "erpl_tunnel_banner.hpp"
 
 namespace duckdb {
 
@@ -78,7 +79,7 @@ string TunnelCreate(ClientContext &context, const FunctionParameters &parameters
 // signature hard to read for mesh backends, where the node has its own address.
 // `tunnel_create` stays as an undocumented alias so existing scripts keep working.
 static PragmaFunction MakeImportPragma(const char *name) {
-    auto pragma = PragmaFunction::PragmaCall(name, TunnelCreate, {});
+    auto pragma = PragmaFunction::PragmaCall(name, DATAZOO_GUARD(ERPL_TUNNEL_BANNER, TunnelCreate), {});
     pragma.named_parameters["secret"] = LogicalType::VARCHAR;
     pragma.named_parameters["remote_host"] = LogicalType::VARCHAR;
     pragma.named_parameters["remote_port"] = LogicalType::INTEGER;

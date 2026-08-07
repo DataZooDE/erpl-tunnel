@@ -290,6 +290,20 @@ A DuckDB process can run **one** mesh (Tailscale *or* NetBird) at a time — a
 Go-runtime constraint. SSH has no such limit and needs no Go. Start a new session
 to switch meshes. See [the guide](docs/guides/one-mesh-per-process.md).
 
+## 💬 Feedback
+
+If `erpl_tunnel` misbehaves, does something surprising, or just doesn't do what you
+expected — [open an issue](https://github.com/DataZooDE/erpl-tunnel/issues). Tunnelling
+touches SSH configs, mesh backends and firewalls we cannot reproduce here, so a report
+with your setup is genuinely the fastest path to a fix. Every error the extension raises
+ends with that link for exactly this reason.
+
+And if it saved you an afternoon, a ⭐ on the repo helps other people find it.
+
+The first time you load the extension in an interactive terminal each day, a small
+banner says the same thing. It never prints when output is piped, in notebooks, or in
+CI. Silence it for good with `SET datazoo_banner = false;` or `DATAZOO_NO_BANNER=1`.
+
 ## 🔧 Telemetry
 
 Anonymous, opt-out usage telemetry (which backends/functions are used) — no hosts,

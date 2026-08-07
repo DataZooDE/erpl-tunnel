@@ -6,6 +6,7 @@
 #include "tunnel_connection.hpp"
 #include "ssh_exporter.hpp"
 #include "telemetry.hpp"
+#include "erpl_tunnel_banner.hpp"
 
 #ifdef ERPL_TUNNEL_HAS_MESH
 #include "mesh_backend.hpp"
@@ -123,7 +124,7 @@ string TunnelExport(ClientContext &context, const FunctionParameters &parameters
 }
 
 static PragmaFunction MakeExportPragma(const char *name) {
-    auto pragma = PragmaFunction::PragmaCall(name, TunnelExport, {});
+    auto pragma = PragmaFunction::PragmaCall(name, DATAZOO_GUARD(ERPL_TUNNEL_BANNER, TunnelExport), {});
     pragma.named_parameters["secret"] = LogicalType::VARCHAR;
     pragma.named_parameters["local_port"] = LogicalType::INTEGER;
     pragma.named_parameters["local_host"] = LogicalType::VARCHAR;

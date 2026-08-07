@@ -2,6 +2,7 @@
 #include "duckdb/parser/parsed_data/create_pragma_function_info.hpp"
 #include "tunnel_manager.hpp"
 #include "telemetry.hpp"
+#include "erpl_tunnel_banner.hpp"
 
 namespace duckdb {
 
@@ -24,7 +25,8 @@ string TunnelClose(ClientContext &context, const FunctionParameters &parameters)
 }
 
 PragmaFunction CreateTunnelClosePragma() {
-    auto tunnel_close_pragma = PragmaFunction::PragmaCall("tunnel_close", TunnelClose, { LogicalType::INTEGER});
+    auto tunnel_close_pragma = PragmaFunction::PragmaCall("tunnel_close", DATAZOO_GUARD(ERPL_TUNNEL_BANNER, TunnelClose),
+                                                          {LogicalType::INTEGER});
     return tunnel_close_pragma;
 }
 

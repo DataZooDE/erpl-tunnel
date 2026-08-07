@@ -1,0 +1,42 @@
+# name: test/sql/tunnel_feedback.test
+# description: The feedback banner's two contracts: errors carry an issue link,
+#              and the banner itself never writes anything under a test runner.
+# group: [tunnel]
+
+require erpl_tunnel
+
+# --- Every error raised by a registered function picks up the issue link, so a
+#     user who hits one is told where to report it without having to go looking.
+statement error
+PRAGMA tunnel_create(secret='does_not_exist', remote_host='h', remote_port='80', local_port='9099');
+----
+https://github.com/DataZooDE/erpl-tunnel/issues
+
+# The link is appended, not substituted: the real diagnostic must survive.
+statement error
+PRAGMA tunnel_create(secret='does_not_exist', remote_host='h', remote_port='80', local_port='9095');
+----
+secret 'does_not_exist' not found
+
+# NOTE: the mesh table functions (tunnel_peers / tunnel_self) are deliberately
+# NOT asserted here. They only exist on builds that bundle a mesh backend, so on
+# SSH-only and musl artifacts the statement fails with a Catalog Error instead of
+# a guarded error, and the assertion would be testing the build flags rather than
+# the guard. The pragma assertions above cover the same guard.
+
+# --- Errors DuckDB raises before dispatch (binder, catalog, arity) are
+#     deliberately NOT annotated -- they are not ours, and claiming them would
+#     send users to the wrong tracker.
+statement error
+SELECT * FROM tunnels(1, 2, 3);
+----
+Binder Error
+
+# --- The opt-out knob exists and is settable. The banner cannot be observed from
+#     inside a .test file at all -- stderr is not a tty here, which is precisely
+#     the guarantee that keeps this suite's expected output unchanged.
+statement ok
+SET datazoo_banner = false;
+
+statement ok
+SET datazoo_banner = true;
