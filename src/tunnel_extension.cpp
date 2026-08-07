@@ -57,7 +57,7 @@ std::unique_ptr<TunnelManager> g_tunnel_manager;
 // CalVer version, matching the erpl / erpl-web scheme: git tags are vYYYY.MM.DD
 // (with an optional .N for same-day re-releases) and the same YYYY.MM.DD string is
 // stamped on telemetry (SetProduct + CaptureExtensionLoad). Bump on release.
-static constexpr const char *ERPL_TUNNEL_VERSION = "2026.07.24";
+static constexpr const char *ERPL_TUNNEL_VERSION = "2026.08.07";
 
 } // namespace duckdb
 
