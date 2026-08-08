@@ -51,22 +51,38 @@ jobs:
           - arch: windows_amd64
             runner: windows-latest
     runs-on: ${{ matrix.runner }}
-    if: ${{ !contains(inputs.exclude_archs, matrix.arch) }}
     steps:
+      # Skip at step level, not job level: a job-level `if:` is evaluated before
+      # the matrix expands, so matrix.arch is not in scope there and the whole
+      # workflow fails to validate (zero jobs, no logs, no useful error).
+      - name: Check whether this arch is excluded
+        id: gate
+        shell: bash
+        run: |
+          if [[ "${{ inputs.exclude_archs }}" == *"${{ matrix.arch }}"* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "${{ matrix.arch }} is excluded by the build job; nothing to smoke test."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.gate.outputs.skip != 'true'
 
       - uses: actions/setup-python@v5
+        if: steps.gate.outputs.skip != 'true'
         with:
           python-version: '3.11'
 
       - name: Download extension artifact
+        if: steps.gate.outputs.skip != 'true'
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.extension_name }}-${{ inputs.duckdb_version }}-extension-${{ matrix.arch }}${{ inputs.artifact_postfix }}
           path: ./extension_artifact
 
       - name: Smoke test (Linux / macOS)
-        if: runner.os != 'Windows'
+        if: steps.gate.outputs.skip != 'true' && runner.os != 'Windows'
         run: |
           python3 scripts/smoke_test.py \
             "$(pwd)/extension_artifact/${{ inputs.extension_name }}.duckdb_extension" \
@@ -74,7 +90,7 @@ jobs:
             "${{ matrix.arch }}"
 
       - name: Smoke test (Windows)
-        if: runner.os == 'Windows'
+        if: steps.gate.outputs.skip != 'true' && runner.os == 'Windows'
         shell: pwsh
         run: |
           $ext = Join-Path $PWD "extension_artifact\${{ inputs.extension_name }}.duckdb_extension"
