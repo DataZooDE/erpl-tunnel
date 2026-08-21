@@ -3,6 +3,8 @@
 #include "duckdb.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
+#include "duckdb/parser/parsed_data/create_pragma_function_info.hpp"
+#include "duckdb/catalog/catalog.hpp"
 #include "tunnel_manager.hpp"
 #include "tunnel_secret.hpp"
 #include "erpl_tunnel_extension.hpp"
@@ -91,6 +93,32 @@ static void RegisterConfiguration(ExtensionLoader &loader)
     datazoo::RegisterBannerOption(loader);
 }
 
+// Registers a pragma, replacing any entry that already holds the name.
+//
+// ExtensionLoader::RegisterFunction(PragmaFunction) leaves CreateInfo::on_conflict at its
+// ERROR_ON_CONFLICT default, so a name already in the catalog aborts the whole LOAD with
+// "Pragma Function with name ... already exists!".
+//
+// That matters during the migration off erpl's bundled tunnel. erpl >= the release that
+// dropped it registers deprecation stubs under these same names, pointing callers here. A
+// user who does `LOAD erpl` and then follows that message with `LOAD erpl_tunnel` would
+// otherwise hit the abort -- the migration path the message itself recommends. Replacing
+// is correct in that situation and harmless otherwise: this extension is the owner of
+// these names.
+static void RegisterPragmaReplacing(ExtensionLoader &loader, PragmaFunction pragma) {
+    auto name = pragma.name;
+    PragmaFunctionSet set(name);
+    set.AddFunction(std::move(pragma));
+
+    CreatePragmaFunctionInfo info(std::move(name), std::move(set));
+    info.on_conflict = OnCreateConflict::REPLACE_ON_CONFLICT;
+
+    auto &db = loader.GetDatabaseInstance();
+    auto &system_catalog = Catalog::GetSystemCatalog(db);
+    auto transaction = CatalogTransaction::GetSystemTransaction(db);
+    system_catalog.CreatePragmaFunction(transaction, info);
+}
+
 static void RegisterTunnelFunctions(ExtensionLoader &loader) {
     // Register tunnel secret type
     RegisterTunnelSecretType(loader);
@@ -99,13 +127,13 @@ static void RegisterTunnelFunctions(ExtensionLoader &loader) {
     g_tunnel_manager = std::make_unique<TunnelManager>();
 
     // Register pragma functions
-    loader.RegisterFunction(CreateTunnelImportPragma());
-    loader.RegisterFunction(CreateTunnelCreatePragma()); // deprecated alias
-    loader.RegisterFunction(CreateTunnelExportPragma());
-    loader.RegisterFunction(CreateTunnelClosePragma());
-    loader.RegisterFunction(CreateTunnelCloseAllPragma());
+    RegisterPragmaReplacing(loader, CreateTunnelImportPragma());
+    RegisterPragmaReplacing(loader, CreateTunnelCreatePragma()); // deprecated alias
+    RegisterPragmaReplacing(loader, CreateTunnelExportPragma());
+    RegisterPragmaReplacing(loader, CreateTunnelClosePragma());
+    RegisterPragmaReplacing(loader, CreateTunnelCloseAllPragma());
 #ifdef ERPL_TUNNEL_HAS_MESH
-    loader.RegisterFunction(CreateMeshActivatePragma());
+    RegisterPragmaReplacing(loader, CreateMeshActivatePragma());
 #endif
 
     {
@@ -115,6 +143,10 @@ static void RegisterTunnelFunctions(ExtensionLoader &loader) {
         desc.examples    = {"SELECT * FROM tunnels()"};
         desc.categories  = {"tunnel"};
         info.descriptions.push_back(std::move(desc));
+        // Same reason as RegisterPragmaReplacing: this overload keeps CreateInfo's
+        // ERROR_ON_CONFLICT default, so a deprecation stub left by an older erpl would
+        // abort the LOAD instead of being replaced.
+        info.on_conflict = OnCreateConflict::REPLACE_ON_CONFLICT;
         loader.RegisterFunction(std::move(info));
     }
 
@@ -129,6 +161,10 @@ static void RegisterTunnelFunctions(ExtensionLoader &loader) {
         desc.examples    = {"SELECT * FROM tunnel_peers(secret = 'ts')"};
         desc.categories  = {"tunnel", "mesh"};
         info.descriptions.push_back(std::move(desc));
+        // Same reason as RegisterPragmaReplacing: this overload keeps CreateInfo's
+        // ERROR_ON_CONFLICT default, so a deprecation stub left by an older erpl would
+        // abort the LOAD instead of being replaced.
+        info.on_conflict = OnCreateConflict::REPLACE_ON_CONFLICT;
         loader.RegisterFunction(std::move(info));
     }
     {
@@ -138,10 +174,15 @@ static void RegisterTunnelFunctions(ExtensionLoader &loader) {
         desc.examples    = {"SELECT * FROM tunnel_self(secret = 'ts')"};
         desc.categories  = {"tunnel", "mesh"};
         info.descriptions.push_back(std::move(desc));
+        // Same reason as RegisterPragmaReplacing: this overload keeps CreateInfo's
+        // ERROR_ON_CONFLICT default, so a deprecation stub left by an older erpl would
+        // abort the LOAD instead of being replaced.
+        info.on_conflict = OnCreateConflict::REPLACE_ON_CONFLICT;
         loader.RegisterFunction(std::move(info));
     }
 #endif
 }
+
 
 static void LoadInternal(ExtensionLoader &loader)
 {
