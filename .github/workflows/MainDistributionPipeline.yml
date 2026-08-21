@@ -77,18 +77,16 @@ jobs:
       duckdb_version: v1.4.5
       ci_tools_version: v1.4-andium
       extension_name: erpl_tunnel
-      # Pinned back from upstream's default (84bab45d) on purpose. That newer vcpkg
-      # ships openssl 3.6.0, which fails to build in this leg's arm64 Linux container:
-      # "building openssl:arm64-linux-release failed with: BUILD_FAILED". Same
-      # incompatibility DataZooDE/erpl hit in its manylinux_2_28 container.
+      # Matches the v1.5.5 leg and upstream's default. The older ce613c41 fetches
+      # msys2-runtime-3.5.4-2, which msys2 purged from every mirror (all 404), so Windows
+      # fails deterministically there (cf. DataZooDE/erpl#115).
       #
-      # The cost is that windows_amd64 stays broken on this leg: this pin's
-      # vcpkg_acquire_msys fetches msys2-runtime-3.5.4-2, which msys2 purged from every
-      # mirror (all 404, cf. DataZooDE/erpl#115). Upstream's _extension_distribution.yml
-      # exposes a single vcpkg_commit with no per-platform override, so Windows and arm64
-      # cannot both be satisfied here. arm64 works today and Windows does not, and v1.5.5
-      # covers Windows -- so this is the better trade. Do not bump without checking arm64.
-      vcpkg_commit: ce613c41372b23b1f51333815feb3edd87ef8a8b
+      # This pin alone is not enough: it ships openssl 3.6.0, which requires Linux kernel
+      # headers the arm64 container does not carry, so arm64 fails with "building
+      # openssl:arm64-linux-release failed with: BUILD_FAILED". vcpkg.json therefore holds
+      # openssl at 3.5.0 -- see the override there. Both halves are required; changing
+      # either alone turns one platform red.
+      vcpkg_commit: 84bab45d415d22042bd0b9081aea57f362da3f35
       extra_toolchains: 'go'   # published artifact is MESH_BACKEND=both (tsnet/netbird shims)
       reduced_ci_mode: 'disabled'   # build the FULL matrix (linux+osx+windows), not just linux
       exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;'   # mingw excluded: upstream MSYS2 libtool-2.4.7-4 404 breaks openssl:x64-mingw-static
