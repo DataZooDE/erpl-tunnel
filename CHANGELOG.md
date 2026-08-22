@@ -17,6 +17,39 @@ self-distributed binaries are not signed with DuckDB's key. Every published
 platform carries all three backends. musl and wasm are **not published** — build
 from source if you need them (musl is SSH-only).
 
+## v2026.08.22
+
+- **[tunnel]** Registering a function name the catalog already holds no longer aborts
+  the whole `LOAD`. `ExtensionLoader::RegisterFunction(PragmaFunction)` and the
+  `CreateTableFunctionInfo` overload leave `on_conflict` at `ERROR_ON_CONFLICT`, so a
+  pre-existing entry under one of our names took the extension down with
+  `Pragma Function with name "tunnel_create" already exists!` — and, once the pragmas
+  alone were fixed, took it down later on the `tunnels` table function instead, leaving
+  a half-registered extension reporting `loaded = false` with `tunnel_peers` and
+  `tunnel_self` silently missing.
+
+  This matters for the migration off erpl's bundled SSH tunnel. erpl is dropping it
+  (DataZooDE/erpl#119) and leaving deprecation stubs under these names that point here,
+  so `LOAD erpl` followed by `LOAD erpl_tunnel` — the exact path the stub message
+  recommends — hit the abort. Our registrations now replace a conflicting entry instead.
+  `REPLACE` rather than `IGNORE`: this extension owns these names, and ignoring would
+  leave a stub that only knows how to raise "this moved".
+
+  **Install this release before upgrading erpl**, or the two cannot be loaded together.
+
+- **[build]** The v1.4.5 leg builds on Windows and Linux arm64 again — both were red,
+  with opposing fixes. The old vcpkg pin fetches `msys2-runtime-3.5.4-2`, purged from
+  every msys2 mirror, so Windows failed deterministically; upstream's newer default
+  ships openssl 3.6.0, which requires Linux kernel headers the arm64 container does not
+  carry. Upstream exposes a single `vcpkg_commit` with no per-platform override, so
+  neither pin alone works. Resolved by taking the newer pin and holding openssl at
+  3.5.0 in `vcpkg.json` — the version the old pin shipped, and the one arm64 was
+  already building. Both halves are required; changing either alone turns a platform red.
+
+- **[build]** The shipped artifact is smoke-tested on every platform, and the excluded
+  architectures are matched exactly so Windows is genuinely covered rather than
+  skipped (#3, #4).
+
 ## v2026.07.30 — community-extensions readiness
 
 - **[build]** `ERPL_REQUIRE_MESH` now defaults **ON**: a build that asks for mesh
