@@ -123,6 +123,16 @@ jobs:
         if: steps.gate.outputs.skip != 'true' && matrix.arch == 'linux_amd64'
         shell: bash
         run: |
+          # actions/checkout does not fetch submodules, so datazoo-banner (which
+          # holds the audit script) is an empty directory here. Init just that one
+          # rather than `submodules: recursive`, which would also clone duckdb --
+          # a large checkout this job has no other use for.
+          #
+          # No --depth 1: a shallow fetch can only serve objects that are ref tips,
+          # and the pinned commit stops being one as soon as its branch is merged
+          # ("Server does not allow request for unadvertised object"). The banner
+          # repo is a handful of headers and scripts, so a full clone is cheap.
+          git submodule update --init datazoo-banner
           curl -sSL -o /tmp/duckdb_cli.zip \
             "https://github.com/duckdb/duckdb/releases/download/${{ inputs.duckdb_version }}/duckdb_cli-linux-amd64.zip"
           unzip -o -q /tmp/duckdb_cli.zip -d /tmp/duckdb_cli
