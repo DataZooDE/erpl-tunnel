@@ -22,6 +22,18 @@ UNITTEST=build/debug/test/unittest
 sql_tests: debug
 	@for t in test/sql/*.test; do echo "== $$t =="; $(UNITTEST) --test-dir . "$$t" || exit 1; done
 
+# Report how much of the extension's catalog surface documents itself, as an
+# agent querying duckdb_functions() would see it. Report-only: always exits 0.
+#
+# Audits the freshly built artifact, never the installed one -- the installed
+# copy is the previous release, so auditing it measures the wrong binary.
+.PHONY: doc-audit
+doc-audit: release
+	@datazoo-banner/audit-function-docs.sh \
+	  --extension $(EXT_NAME) \
+	  --artifact build/release/extension/$(EXT_NAME)/$(EXT_NAME).duckdb_extension \
+	  --check-examples
+
 # Bring up / tear down the dockerised sshd + private HTTP service used by the
 # SSH integration tests (real services, no mocks).
 .PHONY: test_up test_down

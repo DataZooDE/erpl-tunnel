@@ -105,18 +105,48 @@ static void RegisterConfiguration(ExtensionLoader &loader)
 // otherwise hit the abort -- the migration path the message itself recommends. Replacing
 // is correct in that situation and harmless otherwise: this extension is the owner of
 // these names.
-static void RegisterPragmaReplacing(ExtensionLoader &loader, PragmaFunction pragma) {
+// The `descriptions` argument is what makes a pragma self-documenting in
+// duckdb_functions(). ExtensionLoader exposes no RegisterFunction overload taking a
+// CreatePragmaFunctionInfo, which is why extensions generally believe pragmas cannot
+// carry metadata -- but CreatePragmaFunctionInfo derives from CreateFunctionInfo, and
+// duckdb_functions() extracts PRAGMA_FUNCTION_ENTRY through the same generic
+// ExtractFunctionData path as every other function type. Because this helper already
+// bypasses the loader and builds the info itself, attaching the metadata is free.
+//
+// On parameter_names: leave it EMPTY for a pragma whose arguments are all NAMED
+// parameters. duckdb_functions() replaces the whole parameter list when
+// parameter_names is non-empty, iterating over parameter_types -- which for a pragma
+// holds the positional arguments followed by the named ones -- and fills any shortfall
+// with "col1", "col2". Naming only the positional arguments would therefore overwrite
+// the named-parameter names DuckDB already reports correctly. Set it only where the
+// pragma genuinely takes positional arguments.
+static void RegisterPragmaReplacing(ExtensionLoader &loader, PragmaFunction pragma,
+                                    vector<FunctionDescription> descriptions = {}) {
     auto name = pragma.name;
     PragmaFunctionSet set(name);
     set.AddFunction(std::move(pragma));
 
     CreatePragmaFunctionInfo info(std::move(name), std::move(set));
     info.on_conflict = OnCreateConflict::REPLACE_ON_CONFLICT;
+    info.descriptions = std::move(descriptions);
 
     auto &db = loader.GetDatabaseInstance();
     auto &system_catalog = Catalog::GetSystemCatalog(db);
     auto transaction = CatalogTransaction::GetSystemTransaction(db);
     system_catalog.CreatePragmaFunction(transaction, info);
+}
+
+// Builds a FunctionDescription. Descriptions are taken from the function table in
+// README.md so the two cannot drift apart silently.
+static FunctionDescription TunnelDoc(string description, vector<string> examples,
+                                     vector<string> parameter_names = {},
+                                     vector<string> categories = {"tunnel"}) {
+    FunctionDescription desc;
+    desc.description = std::move(description);
+    desc.examples = std::move(examples);
+    desc.parameter_names = std::move(parameter_names);
+    desc.categories = std::move(categories);
+    return desc;
 }
 
 static void RegisterTunnelFunctions(ExtensionLoader &loader) {
@@ -126,14 +156,42 @@ static void RegisterTunnelFunctions(ExtensionLoader &loader) {
     // Initialize tunnel manager
     g_tunnel_manager = std::make_unique<TunnelManager>();
 
-    // Register pragma functions
-    RegisterPragmaReplacing(loader, CreateTunnelImportPragma());
-    RegisterPragmaReplacing(loader, CreateTunnelCreatePragma()); // deprecated alias
-    RegisterPragmaReplacing(loader, CreateTunnelExportPragma());
-    RegisterPragmaReplacing(loader, CreateTunnelClosePragma());
-    RegisterPragmaReplacing(loader, CreateTunnelCloseAllPragma());
+    // Register pragma functions. All arguments here are named parameters except on
+    // tunnel_close and tunnel_mesh_activate, so only those two set parameter_names --
+    // see the note on RegisterPragmaReplacing.
+    RegisterPragmaReplacing(
+        loader, CreateTunnelImportPragma(),
+        {TunnelDoc("Bring a remote service to a local port; returns (tunnel_id, message). "
+                   "Named parameters: secret, remote_host, remote_port, local_port, timeout, bind_all. "
+                   "Binds 127.0.0.1 unless bind_all is true.",
+                   {"PRAGMA tunnel_import(secret = 'bastion', remote_host = 'db.internal', "
+                    "remote_port = 5432, local_port = 15432);"})});
+    RegisterPragmaReplacing(
+        loader, CreateTunnelCreatePragma(), // deprecated alias
+        {TunnelDoc("Deprecated alias of tunnel_import, kept so existing scripts keep working; "
+                   "use tunnel_import instead.",
+                   {"PRAGMA tunnel_create(secret = 'bastion', remote_host = 'db.internal', "
+                    "remote_port = 5432, local_port = 15432);"})});
+    RegisterPragmaReplacing(
+        loader, CreateTunnelExportPragma(),
+        {TunnelDoc("Publish a local port onto the network; returns (tunnel_id, remote_port, message). "
+                   "Named parameters: secret, local_port, local_host, remote_port, remote_host, timeout. "
+                   "Over a mesh backend there is no host to name, so remote_host is rejected.",
+                   {"PRAGMA tunnel_export(secret = 'ts', local_port = 9494);"})});
+    RegisterPragmaReplacing(
+        loader, CreateTunnelClosePragma(),
+        {TunnelDoc("Close one tunnel by id; idempotent, and reports whether the tunnel was still open.",
+                   {"PRAGMA tunnel_close(1);"}, {"tunnel_id"})});
+    RegisterPragmaReplacing(
+        loader, CreateTunnelCloseAllPragma(),
+        {TunnelDoc("Close every open tunnel; idempotent.", {"PRAGMA tunnel_close_all;"})});
 #ifdef ERPL_TUNNEL_HAS_MESH
-    RegisterPragmaReplacing(loader, CreateMeshActivatePragma());
+    RegisterPragmaReplacing(
+        loader, CreateMeshActivatePragma(),
+        {TunnelDoc("Advanced -- force-load a mesh backend ('tailscale' or 'netbird') now. Normally "
+                   "automatic on first tunnel_import/tunnel_peers; use only to surface auth errors "
+                   "early or to pin the one mesh for this process.",
+                   {"PRAGMA tunnel_mesh_activate('tailscale');"}, {"backend"}, {"tunnel", "mesh"})});
 #endif
 
     {
