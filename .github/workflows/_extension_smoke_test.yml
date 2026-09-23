@@ -110,3 +110,24 @@ jobs:
         run: |
           $ext = Join-Path $PWD "extension_artifact\${{ inputs.extension_name }}.duckdb_extension"
           python scripts/smoke_test.py "$ext" "${{ inputs.duckdb_version }}" "${{ matrix.arch }}"
+
+      # How much of this extension documents itself, as an agent querying
+      # duckdb_functions() would see it. REPORT-ONLY: always exits 0 and never
+      # fails the build.
+      #
+      # linux_amd64 only -- the answer is a property of the source, not of the
+      # platform, so running it on all three would print the same table three
+      # times. Written to the job summary rather than the log, because a report
+      # nobody opens is a report that does not exist.
+      - name: Function documentation audit
+        if: steps.gate.outputs.skip != 'true' && matrix.arch == 'linux_amd64'
+        shell: bash
+        run: |
+          curl -sSL -o /tmp/duckdb_cli.zip \
+            "https://github.com/duckdb/duckdb/releases/download/${{ inputs.duckdb_version }}/duckdb_cli-linux-amd64.zip"
+          unzip -o -q /tmp/duckdb_cli.zip -d /tmp/duckdb_cli
+          datazoo-banner/audit-function-docs.sh \
+            --extension "${{ inputs.extension_name }}" \
+            --artifact "./extension_artifact/${{ inputs.extension_name }}.duckdb_extension" \
+            --duckdb /tmp/duckdb_cli/duckdb \
+            --check-examples >> "$GITHUB_STEP_SUMMARY"
