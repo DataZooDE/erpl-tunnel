@@ -17,6 +17,25 @@ self-distributed binaries are not signed with DuckDB's key. Every published
 platform carries all three backends. musl and wasm are **not published** — build
 from source if you need them (musl is SSH-only).
 
+## v2026.09.26
+
+- **[docs]** Every function `erpl_tunnel` registers now documents itself in
+  `duckdb_functions()`: 9 of 9 carry a description, a runnable example, real parameter
+  names and categories, up from 3 of 9. An agent connected to a DuckDB database can only
+  learn what an extension does by querying that view — a README is not reachable from a
+  SQL connection.
+
+  Six of the nine are **pragmas**, and pragmas were widely believed unable to carry a
+  `FunctionDescription` — two comments in `erpl` said so outright. They can:
+  `CreatePragmaFunctionInfo` derives from `CreateFunctionInfo`, and `duckdb_functions()`
+  extracts `PRAGMA_FUNCTION_ENTRY` through the same generic path as every other function
+  type. `tunnel_close(tunnel_id)` and `tunnel_mesh_activate(backend)` now report real
+  argument names instead of `col0`.
+
+  `tunnel_import` and `tunnel_export` deliberately set no `parameter_names`: they take
+  named parameters only, and a non-empty `parameter_names` replaces the whole rendered
+  list, which would have overwritten `secret`/`remote_host`/etc. with `col1`, `col2`.
+
 ## v2026.08.22
 
 - **[tunnel]** Registering a function name the catalog already holds no longer aborts
