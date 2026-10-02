@@ -5,7 +5,7 @@ All notable changes to `erpl_tunnel` are documented here. Versions follow
 
 Binaries are self-distributed via [get.erpl.io](http://get.erpl.io) for
 `{linux_amd64, linux_arm64, osx_amd64, osx_arm64, windows_amd64} ×
-{DuckDB v1.4.5, v1.5.5}`. Install with:
+{DuckDB v1.4.5, v1.5.6}`. Install with:
 
 ```sql
 INSTALL erpl_tunnel FROM 'http://get.erpl.io';
