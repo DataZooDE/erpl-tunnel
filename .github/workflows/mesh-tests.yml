@@ -6,6 +6,8 @@
 name: Mesh backend tests
 on:
   push:
+    branches: [main]
+    tags: ['**']
     paths:
       - 'shim/**'
       - 'src/mesh_*'
@@ -29,6 +31,7 @@ concurrency:
 jobs:
   core-tests:
     name: Pure C++ unit tests (mesh-peers JSON parser)
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +46,7 @@ jobs:
   # trickiest new code in the Windows port.
   meshpair:
     name: Stream pair unit tests (${{ matrix.os }})
+    timeout-minutes: 20
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -73,6 +77,7 @@ jobs:
   # through, plus the four integration tests that were skipping.
   ssh-e2e:
     name: SSH data plane (real bastion, real payload)
+    timeout-minutes: 80
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -132,6 +137,7 @@ jobs:
   # the embedded Go shims are actually present in the artifact under test.
   zero-dep:
     name: Zero-dependency proof (NFR-1)
+    timeout-minutes: 55
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -155,6 +161,7 @@ jobs:
 
   spike:
     name: Go-in-dlopen spike (R1)
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -170,6 +177,7 @@ jobs:
   # — so the spike asserts Go behaviour, not merely that the library loaded.
   spike-windows:
     name: Go-in-LoadLibrary spike (Windows, R1)
+    timeout-minutes: 20
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -249,6 +257,7 @@ jobs:
   # MSVC's link.exe consumes a mingw-produced, pure-data object.
   blob-embed:
     name: Blob-in-static-lib probe (Windows, COFF object)
+    timeout-minutes: 15
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -289,6 +298,7 @@ jobs:
   # %LOCALAPPDATA% cache, LoadLibraryW it, and run Go. This job does exactly that.
   mesh-runtime-windows:
     name: Mesh activates at runtime (Windows)
+    timeout-minutes: 85
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -388,6 +398,7 @@ jobs:
   # extract, dlopen and start Go inside DuckDB on Mach-O?
   mesh-runtime-macos:
     name: Mesh activates at runtime (macOS)
+    timeout-minutes: 55
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -411,6 +422,7 @@ jobs:
 
   mesh-e2e:
     name: Lazy-load, latch & Headscale enrollment
+    timeout-minutes: 65
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -444,6 +456,7 @@ jobs:
 
   tailscale-dataplane:
     name: Tailscale data plane (Tier 2, real WireGuard)
+    timeout-minutes: 55
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -474,6 +487,7 @@ jobs:
   # nothing else in CI proves a peer can reach INTO the extension's process.
   quack-over-tailscale:
     name: quack over Tailscale (tunnel_export acceptance)
+    timeout-minutes: 55
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -517,6 +531,7 @@ jobs:
   # Tailscale run never exercises. An export can be functional and still unreachable.
   quack-over-netbird:
     name: quack over NetBird (tunnel_export acceptance)
+    timeout-minutes: 55
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -549,6 +564,7 @@ jobs:
 
   netbird-dataplane:
     name: NetBird data plane (Tier 2, real WireGuard, no IdP)
+    timeout-minutes: 55
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
