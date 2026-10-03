@@ -89,7 +89,12 @@ PRAGMA tunnel_export(secret='bastion', local_port='$LOCAL_PORT', remote_port='$R
 SELECT 'EXPORT_READY' AS marker;
 SQL
 
-for _ in $(seq 1 20); do
+# Wait at least as long as the export may legitimately take to come up. The pragma above is given
+# timeout='30', so a 10 s loop could report failure while the call was still inside its own budget.
+# A debug build starting on a cold CI runner can print nothing for well over 10 s, which is the likely
+# cause of the flake seen on release tags. 40 s = the 30 s budget plus slack; a real hang still fails.
+READY_WAIT_SECONDS=40
+for _ in $(seq 1 $((READY_WAIT_SECONDS * 2))); do
   grep -q EXPORT_READY "$OUT" 2>/dev/null && break
   sleep 0.5
 done
