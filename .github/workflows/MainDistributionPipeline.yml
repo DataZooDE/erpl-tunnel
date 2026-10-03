@@ -24,12 +24,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ---- DuckDB v1.5.5 ---------------------------------------------------------
+  # ---- DuckDB v1.5.6 ---------------------------------------------------------
   duckdb-v154-build:
-    name: Build & test (v1.5.5)
+    name: Build & test (v1.5.6)
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.5-variegata
     with:
-      duckdb_version: v1.5.5
+      duckdb_version: v1.5.6
       ci_tools_version: v1.5-variegata
       extension_name: erpl_tunnel
       vcpkg_commit: 84bab45d415d22042bd0b9081aea57f362da3f35
@@ -46,16 +46,16 @@ jobs:
         set(ERPL_REQUIRE_MESH ON)
 
   duckdb-v154-smoke-test:
-    name: Smoke test (v1.5.5)
+    name: Smoke test (v1.5.6)
     needs: duckdb-v154-build
     uses: ./.github/workflows/_extension_smoke_test.yml
     with:
-      duckdb_version: v1.5.5
+      duckdb_version: v1.5.6
       extension_name: erpl_tunnel
       exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;'
 
   duckdb-v154-deploy:
-    name: Deploy (v1.5.5)
+    name: Deploy (v1.5.6)
     needs: [duckdb-v154-build, duckdb-v154-smoke-test]
     # Self-hosted S3 distribution runs only on release tags. Day-to-day pushes are
     # build+test only; primary distribution is via duckdb community-extensions.
@@ -63,7 +63,7 @@ jobs:
     uses: ./.github/workflows/_extension_deploy.yml
     secrets: inherit
     with:
-      duckdb_version: v1.5.5
+      duckdb_version: v1.5.6
       extension_name: erpl_tunnel
       exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;'   # mingw excluded: upstream MSYS2 libtool-2.4.7-4 404 breaks openssl:x64-mingw-static
       deploy_latest: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
@@ -77,7 +77,7 @@ jobs:
       duckdb_version: v1.4.5
       ci_tools_version: v1.4-andium
       extension_name: erpl_tunnel
-      # Matches the v1.5.5 leg and upstream's default. The older ce613c41 fetches
+      # Matches the v1.5.6 leg and upstream's default. The older ce613c41 fetches
       # msys2-runtime-3.5.4-2, which msys2 purged from every mirror (all 404), so Windows
       # fails deterministically there (cf. DataZooDE/erpl#115).
       #

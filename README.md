@@ -47,7 +47,7 @@ duckdb -unsigned
 
 > **Publication status.** [get.erpl.io](http://get.erpl.io) is the distribution
 > channel today, covering `{linux_amd64, linux_arm64, osx_amd64, osx_arm64,
-> windows_amd64} × {DuckDB v1.4.5, v1.5.5}` — all with the three backends. musl
+> windows_amd64} × {DuckDB v1.4.5, v1.5.6}` — all with the three backends. musl
 > and wasm are **not published**; build from source for those (musl is SSH-only).
 > The community-extensions submission (which would make `INSTALL erpl_tunnel FROM
 > community` work without `-unsigned`) is still in progress. You can also
