@@ -17,6 +17,14 @@ self-distributed binaries are not signed with DuckDB's key. Every published
 platform carries all three backends. musl and wasm are **not published** — build
 from source if you need them (musl is SSH-only).
 
+## v2026.10.03
+
+- **[build]** The v1.5 binaries are now built against **DuckDB v1.5.6** (they were built
+  against v1.5.5). The v1.4.5 LTS binaries are unchanged. There are no functional changes
+  in this release: it moves the published v1.5 set to the current DuckDB so that
+  `INSTALL erpl_tunnel FROM 'http://get.erpl.io'` finds a build on v1.5.6. If you run
+  DuckDB v1.5.5, stay on v2026.09.26.
+
 ## v2026.09.26
 
 - **[docs]** Every function `erpl_tunnel` registers now documents itself in
