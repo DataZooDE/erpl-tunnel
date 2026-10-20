@@ -17,6 +17,19 @@ self-distributed binaries are not signed with DuckDB's key. Every published
 platform carries all three backends. musl and wasm are **not published** — build
 from source if you need them (musl is SSH-only).
 
+## v2026.10.20
+
+- **[build]** Builds on **DuckDB 2.0** as well, from the same source tree as v1.4.5 LTS
+  and v1.5.6 (API differences go through the header-only
+  [duckdb-compat](https://github.com/DataZooDE/duckdb-compat) shims). The community
+  extensions repository builds against 2.0 by default, so this keeps
+  `INSTALL erpl_tunnel FROM community` working there. The self-distributed set on
+  get.erpl.io is unchanged: v1.4.5 and v1.5.6.
+- **[fix]** On DuckDB 2.0, `duckdb_functions()` named the positional argument of
+  `tunnel_close` and `tunnel_mesh_activate` `col0`; it is now `tunnel_id` / `backend`
+  on every line.
+- No functional changes on v1.4.5 and v1.5.6.
+
 ## v2026.10.03
 
 - **[build]** The v1.5 binaries are now built against **DuckDB v1.5.6** (they were built
