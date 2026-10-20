@@ -1,4 +1,5 @@
 #include "tunnel_secret.hpp"
+#include "duckdb_compat.hpp"
 #include "tunnel_connection.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -71,7 +72,7 @@ unique_ptr<BaseSecret> CreateTunnelSecretFunction(ClientContext &context, Create
         } else if (lower_name == "port") {
             lower_name = "ssh_port";
         }
-        result->secret_map[lower_name] = named_param.second.ToString();
+        result->secret_map[duckdb_compat::Ident(lower_name)] = named_param.second.ToString();
     }
 
     // Redact every sensitive field across backends (FR-22).
@@ -80,28 +81,28 @@ unique_ptr<BaseSecret> CreateTunnelSecretFunction(ClientContext &context, Create
 }
 
 void SetTunnelSecretParameters(CreateSecretFunction &function) {
-    function.named_parameters["backend"] = LogicalType::VARCHAR;
+    duckdb_compat::AddNamedParameter(function, "backend", LogicalType::VARCHAR);
     // ssh (host/user/port are friendly aliases for ssh_host/ssh_user/ssh_port)
-    function.named_parameters["ssh_host"] = LogicalType::VARCHAR;
-    function.named_parameters["ssh_port"] = LogicalType::INTEGER;
-    function.named_parameters["ssh_user"] = LogicalType::VARCHAR;
-    function.named_parameters["host"] = LogicalType::VARCHAR;
-    function.named_parameters["user"] = LogicalType::VARCHAR;
-    function.named_parameters["port"] = LogicalType::INTEGER;
-    function.named_parameters["password"] = LogicalType::VARCHAR;
-    function.named_parameters["private_key_path"] = LogicalType::VARCHAR;
-    function.named_parameters["passphrase"] = LogicalType::VARCHAR;
-    function.named_parameters["auth_method"] = LogicalType::VARCHAR;
+    duckdb_compat::AddNamedParameter(function, "ssh_host", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "ssh_port", LogicalType::INTEGER);
+    duckdb_compat::AddNamedParameter(function, "ssh_user", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "host", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "user", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "port", LogicalType::INTEGER);
+    duckdb_compat::AddNamedParameter(function, "password", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "private_key_path", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "passphrase", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "auth_method", LogicalType::VARCHAR);
     // mesh (tailscale / netbird)
-    function.named_parameters["auth_key"] = LogicalType::VARCHAR;
-    function.named_parameters["setup_key"] = LogicalType::VARCHAR;
-    function.named_parameters["hostname"] = LogicalType::VARCHAR;
-    function.named_parameters["tags"] = LogicalType::VARCHAR;
-    function.named_parameters["groups"] = LogicalType::VARCHAR;
-    function.named_parameters["control_url"] = LogicalType::VARCHAR;
-    function.named_parameters["management_url"] = LogicalType::VARCHAR;
-    function.named_parameters["state_dir"] = LogicalType::VARCHAR;
-    function.named_parameters["ephemeral"] = LogicalType::BOOLEAN;
+    duckdb_compat::AddNamedParameter(function, "auth_key", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "setup_key", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "hostname", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "tags", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "groups", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "control_url", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "management_url", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "state_dir", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "ephemeral", LogicalType::BOOLEAN);
 }
 
 void RegisterTunnelSecretType(ExtensionLoader &loader) {
@@ -185,21 +186,23 @@ TunnelAuthParams ConvertTunnelSecretToAuthParams(const KeyValueSecret &duck_secr
 
 // ------------------------------------------------------------------------------------------------
 
+namespace {
+// The map type differs per call site and DuckDB line (string- or Identifier-keyed).
+template <class MAP>
+std::string SecretNameFrom(const MAP &named_params) {
+    auto secret = duckdb_compat::FindNamedParameter(named_params, "secret");
+    return secret ? secret->ToString() : std::string();
+}
+} // namespace
+
 std::string GetTunnelSecretNameFromParams(const TableFunctionBindInput &input) {
-    return GetTunnelSecretNameFromParams(input.named_parameters);
+    return SecretNameFrom(input.named_parameters);
 }
 
 std::string GetTunnelSecretNameFromParams(const FunctionParameters &parameters) {
-    return GetTunnelSecretNameFromParams(parameters.named_parameters);
+    return SecretNameFrom(parameters.named_parameters);
 }
 
-std::string GetTunnelSecretNameFromParams(const named_parameter_map_t &named_params) {
-    if (named_params.find("secret") != named_params.end()) {
-        return named_params.at("secret").ToString();
-    } else {
-        return std::string();
-    }
-}
 
 TunnelAuthParams GetTunnelAuthParamsFromContext(ClientContext &context, const TableFunctionBindInput &parameters) {
     auto secret_name = GetTunnelSecretNameFromParams(parameters);

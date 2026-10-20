@@ -1,11 +1,12 @@
 #include "scanner_tunnels.hpp"
+#include "duckdb_compat.hpp"
 #include "tunnel_manager.hpp"
 #include "telemetry.hpp"
 #include "erpl_tunnel_banner.hpp"
 
 namespace duckdb {
 
-unique_ptr<FunctionData> ListTunnelsBind(ClientContext &context, TableFunctionBindInput &input, vector<LogicalType> &return_types, vector<string> &names) {
+unique_ptr<FunctionData> ListTunnelsBind(ClientContext &context, TableFunctionBindInput &input, vector<LogicalType> &return_types, duckdb_compat::BindNames &names) {
     PostHogTelemetry::Instance().RecordFunctionCall("tunnels");
     
     return_types.push_back(LogicalType::BIGINT);    // tunnel_id
@@ -21,18 +22,18 @@ unique_ptr<FunctionData> ListTunnelsBind(ClientContext &context, TableFunctionBi
     return_types.push_back(LogicalType::VARCHAR);   // local_host
     return_types.push_back(LogicalType::VARCHAR);   // status
 
-    names.push_back("tunnel_id");
-    names.push_back("backend");
-    names.push_back("direction");
-    names.push_back("ssh_host");
-    names.push_back("ssh_port");
-    names.push_back("ssh_user");
-    names.push_back("remote_host");
-    names.push_back("remote_port");
-    names.push_back("local_port");
-    names.push_back("bind_addr");
-    names.push_back("local_host");
-    names.push_back("status");
+    names.emplace_back("tunnel_id");
+    names.emplace_back("backend");
+    names.emplace_back("direction");
+    names.emplace_back("ssh_host");
+    names.emplace_back("ssh_port");
+    names.emplace_back("ssh_user");
+    names.emplace_back("remote_host");
+    names.emplace_back("remote_port");
+    names.emplace_back("local_port");
+    names.emplace_back("bind_addr");
+    names.emplace_back("local_host");
+    names.emplace_back("status");
     
     // Get the list of tunnels with detailed information from the tunnel manager
     std::vector<std::pair<int64_t, TunnelConnectionAttributes>> tunnels;

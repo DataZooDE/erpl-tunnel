@@ -1,4 +1,5 @@
 #include "mesh_backend.hpp"
+#include "duckdb_compat.hpp"
 
 #include <map>
 #include <mutex>
@@ -268,14 +269,14 @@ struct MeshPeersBindData : public FunctionData {
     bool Equals(const FunctionData &) const override { return false; }
 };
 
-void PeersSchema(vector<LogicalType> &types, vector<string> &names) {
+void PeersSchema(vector<LogicalType> &types, duckdb_compat::BindNames &names) {
     types = {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR,
              LogicalType::VARCHAR, LogicalType::LIST(LogicalType::VARCHAR), LogicalType::BOOLEAN};
-    names = {"backend", "host_name", "dns_name", "mesh_ip", "tags", "online"};
+    duckdb_compat::AssignBindNames(names, {"backend", "host_name", "dns_name", "mesh_ip", "tags", "online"});
 }
 
 unique_ptr<FunctionData> TunnelPeersBind(ClientContext &context, TableFunctionBindInput &input,
-                                         vector<LogicalType> &return_types, vector<string> &names) {
+                                         vector<LogicalType> &return_types, duckdb_compat::BindNames &names) {
     PostHogTelemetry::Instance().RecordFunctionCall("tunnel_peers");
     PeersSchema(return_types, names);
     auto secret_name = GetTunnelSecretNameFromParams(input);
@@ -285,7 +286,7 @@ unique_ptr<FunctionData> TunnelPeersBind(ClientContext &context, TableFunctionBi
 }
 
 unique_ptr<FunctionData> TunnelSelfBind(ClientContext &context, TableFunctionBindInput &input,
-                                        vector<LogicalType> &return_types, vector<string> &names) {
+                                        vector<LogicalType> &return_types, duckdb_compat::BindNames &names) {
     PostHogTelemetry::Instance().RecordFunctionCall("tunnel_self");
     PeersSchema(return_types, names);
     auto secret_name = GetTunnelSecretNameFromParams(input);
@@ -314,12 +315,12 @@ void MeshPeersEmit(ClientContext &, TableFunctionInput &data_p, DataChunk &outpu
         bind.cursor++;
         count++;
     }
-    output.SetCardinality(count);
+    duckdb_compat::SetChildCardinality(output, count);
 }
 
 TableFunction MakeMeshTableFunction(const char *name, table_function_bind_t bind) {
     TableFunction fn(name, {}, DATAZOO_GUARD(ERPL_TUNNEL_BANNER, MeshPeersEmit), bind);
-    fn.named_parameters["secret"] = LogicalType::VARCHAR;
+    duckdb_compat::AddNamedParameter(fn, "secret", LogicalType::VARCHAR);
     return fn;
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include "duckdb_compat.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "tunnel_connection.hpp"
 #include <vector>
@@ -32,7 +33,7 @@ public:
         }
 
         // Set the cardinality to 1 (one row at a time)
-        output.SetCardinality(1);
+        duckdb_compat::SetChildCardinality(output, 1);
 
         // Set the values for the current row
         const auto &tunnel_info = tunnels[current_row];
@@ -58,7 +59,7 @@ private:
 };
 
 void ListTunnelsFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output);
-unique_ptr<FunctionData> ListTunnelsBind(ClientContext &context, TableFunctionBindInput &input, vector<LogicalType> &return_types, vector<string> &names);
+unique_ptr<FunctionData> ListTunnelsBind(ClientContext &context, TableFunctionBindInput &input, vector<LogicalType> &return_types, duckdb_compat::BindNames &names);
 TableFunction CreateTunnelsTableFunction();
 
 } // namespace duckdb 
