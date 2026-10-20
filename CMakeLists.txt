@@ -113,8 +113,14 @@ if(MESH_WANTED)
         src/mesh_backend.cpp
         src/mesh_forwarder.cpp
         src/mesh_exporter.cpp
-        src/mesh_peers_json.cpp
-        duckdb/third_party/yyjson/yyjson.cpp)
+        src/mesh_peers_json.cpp)
+    # DuckDB's yyjson parses the mesh peer JSON. Compile it ourselves only when
+    # DuckDB is built from source: with a prebuilt DuckDB (PREBUILT_BINARY, which
+    # the 2.0 ci-tools use) the loadable extension links libduckdb_static.a, which
+    # already contains yyjson -- a second copy is a multiple-definition link error.
+    if(NOT PREBUILT_BINARY)
+        list(APPEND EXTENSION_SOURCES duckdb/third_party/yyjson/yyjson.cpp)
+    endif()
     list(APPEND MESH_DEFINES ERPL_TUNNEL_HAS_MESH)
     # Bootstrap a new-enough Go (system Go if adequate, else a pinned download).
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/bootstrap_go.cmake)
@@ -241,6 +247,14 @@ endforeach()
 if(UNIX AND NOT APPLE)
     target_link_libraries(${EXTENSION_NAME} ${CMAKE_DL_LIBS})
     target_link_libraries(${LOADABLE_EXTENSION_NAME} ${CMAKE_DL_LIBS})
+endif()
+
+# DuckDB 2.0's httplib (used by posthog-telemetry) reads the macOS keychain when
+# built with OpenSSL, so both targets need these frameworks (harmless before 2.0).
+if(APPLE)
+    foreach(t ${EXTENSION_NAME} ${LOADABLE_EXTENSION_NAME})
+        target_link_libraries(${t} "-framework CoreFoundation" "-framework Security")
+    endforeach()
 endif()
 
 if(WIN32)
