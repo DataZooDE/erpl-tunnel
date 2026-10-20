@@ -1,4 +1,5 @@
 #include "pragma_tunnel_create.hpp"
+#include "duckdb_compat.hpp"
 #include "duckdb/parser/parsed_data/create_pragma_function_info.hpp"
 #include "tunnel_manager.hpp"
 #include "tunnel_secret.hpp"
@@ -80,12 +81,12 @@ string TunnelCreate(ClientContext &context, const FunctionParameters &parameters
 // `tunnel_create` stays as an undocumented alias so existing scripts keep working.
 static PragmaFunction MakeImportPragma(const char *name) {
     auto pragma = PragmaFunction::PragmaCall(name, DATAZOO_GUARD(ERPL_TUNNEL_BANNER, TunnelCreate), {});
-    pragma.named_parameters["secret"] = LogicalType::VARCHAR;
-    pragma.named_parameters["remote_host"] = LogicalType::VARCHAR;
-    pragma.named_parameters["remote_port"] = LogicalType::INTEGER;
-    pragma.named_parameters["local_port"] = LogicalType::INTEGER;
-    pragma.named_parameters["timeout"] = LogicalType::INTEGER;
-    pragma.named_parameters["bind_all"] = LogicalType::BOOLEAN;
+    duckdb_compat::AddNamedParameter(pragma, "secret", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(pragma, "remote_host", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(pragma, "remote_port", LogicalType::INTEGER);
+    duckdb_compat::AddNamedParameter(pragma, "local_port", LogicalType::INTEGER);
+    duckdb_compat::AddNamedParameter(pragma, "timeout", LogicalType::INTEGER);
+    duckdb_compat::AddNamedParameter(pragma, "bind_all", LogicalType::BOOLEAN);
     return pragma;
 }
 

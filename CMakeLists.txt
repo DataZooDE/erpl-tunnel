@@ -33,6 +33,12 @@ else()
 endif()
 find_package(OpenSSL REQUIRED)
 
+# duckdb-compat: one source tree for DuckDB 1.4 LTS, 1.5 and 2.0. Header-only
+# API-shape shims (DataZooDE/duckdb-compat); no `#if` on DuckDB versions at
+# call sites.
+add_subdirectory(duckdb-compat)
+include_directories(duckdb-compat/include)
+
 include_directories(
     src/include
     posthog-telemetry/include

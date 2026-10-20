@@ -1,6 +1,7 @@
 #define DUCKDB_EXTENSION_MAIN
 
 #include "duckdb.hpp"
+#include "duckdb_compat.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_pragma_function_info.hpp"
@@ -122,6 +123,11 @@ static void RegisterConfiguration(ExtensionLoader &loader)
 // pragma genuinely takes positional arguments.
 static void RegisterPragmaReplacing(ExtensionLoader &loader, PragmaFunction pragma,
                                     vector<FunctionDescription> descriptions = {}) {
+    // DuckDB 2.0 reports parameter names from the signature, not from the
+    // description, so name the positional arguments there too (no-op before 2.0).
+    if (!descriptions.empty() && !descriptions[0].parameter_names.empty()) {
+        duckdb_compat::NameParameters(pragma, descriptions[0].parameter_names);
+    }
     auto name = pragma.name;
     PragmaFunctionSet set(name);
     set.AddFunction(std::move(pragma));

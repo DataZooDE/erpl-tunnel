@@ -29,7 +29,6 @@ void RegisterTunnelSecretType(ExtensionLoader &loader);
 // Get the secret name from the named parameters
 std::string GetTunnelSecretNameFromParams(const TableFunctionBindInput &parameters);
 std::string GetTunnelSecretNameFromParams(const FunctionParameters &parameters);
-std::string GetTunnelSecretNameFromParams(const named_parameter_map_t &named_params);
 
 // Get the secret from the context
 TunnelAuthParams GetTunnelAuthParamsFromContext(ClientContext &context, const TableFunctionBindInput &parameters);

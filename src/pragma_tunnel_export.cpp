@@ -1,4 +1,5 @@
 #include "pragma_tunnel_export.hpp"
+#include "duckdb_compat.hpp"
 
 #include "duckdb/common/string_util.hpp"
 #include "tunnel_manager.hpp"
@@ -125,12 +126,12 @@ string TunnelExport(ClientContext &context, const FunctionParameters &parameters
 
 static PragmaFunction MakeExportPragma(const char *name) {
     auto pragma = PragmaFunction::PragmaCall(name, DATAZOO_GUARD(ERPL_TUNNEL_BANNER, TunnelExport), {});
-    pragma.named_parameters["secret"] = LogicalType::VARCHAR;
-    pragma.named_parameters["local_port"] = LogicalType::INTEGER;
-    pragma.named_parameters["local_host"] = LogicalType::VARCHAR;
-    pragma.named_parameters["remote_port"] = LogicalType::INTEGER;
-    pragma.named_parameters["remote_host"] = LogicalType::VARCHAR;
-    pragma.named_parameters["timeout"] = LogicalType::INTEGER;
+    duckdb_compat::AddNamedParameter(pragma, "secret", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(pragma, "local_port", LogicalType::INTEGER);
+    duckdb_compat::AddNamedParameter(pragma, "local_host", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(pragma, "remote_port", LogicalType::INTEGER);
+    duckdb_compat::AddNamedParameter(pragma, "remote_host", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(pragma, "timeout", LogicalType::INTEGER);
     return pragma;
 }
 

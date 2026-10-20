@@ -71,6 +71,28 @@ jobs:
       deploy_latest: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
       deploy_versioned: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
 
+  # ---- DuckDB 2.0 (pre-release) ---------------------------------------------
+  # community-extensions builds repo.ref against this commit (DUCKDB_LATEST_STABLE
+  # in its build.yml); keep the SHA in step with it. Build + SQL tests only: no
+  # smoke test (no stock 2.0 CLI to download) and no deploy (an alpha binary only
+  # loads into that alpha).
+  duckdb-next-build:
+    name: Build & test (v2.0 pre-release)
+    uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v2.0-cyanoptera
+    with:
+      duckdb_version: b15358c371daf10dad799a43b6167f6ccdce84d8
+      ci_tools_version: v2.0-cyanoptera
+      extension_name: erpl_tunnel
+      vcpkg_commit: 84bab45d415d22042bd0b9081aea57f362da3f35
+      extra_toolchains: 'go'
+      reduced_ci_mode: 'disabled'
+      exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;'
+      extra_extension_config: |
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+          set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-gnu-unique")
+        endif()
+        set(ERPL_REQUIRE_MESH ON)
+
   # ---- DuckDB v1.4.5 (latest-2 support window) -------------------------------
   duckdb-v145-build:
     name: Build & test (v1.4.5)
