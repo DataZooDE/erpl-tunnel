@@ -33,7 +33,7 @@ else()
 endif()
 find_package(OpenSSL REQUIRED)
 
-# duckdb-compat: one source tree for DuckDB 1.4 LTS, 1.5 and 2.0. Header-only
+# duckdb-compat: one source tree for DuckDB 1.5 and 2.0. Header-only
 # API-shape shims (DataZooDE/duckdb-compat); no `#if` on DuckDB versions at
 # call sites.
 add_subdirectory(duckdb-compat)
@@ -45,7 +45,8 @@ include_directories(
     duckdb/third_party/yyjson/include
     # httplib for the posthog-telemetry HTTPS client. Added directly (matching
     # erpl-idoc) rather than relying on posthog-telemetry's DUCKDB_SRC_INCLUDE gate,
-    # which isn't set in every ci-tools flow (the v1.4-andium community build).
+    # which isn't set in every ci-tools flow (it was missing in the former
+    # v1.4-andium community build; kept so the include never depends on it).
     ${CMAKE_CURRENT_SOURCE_DIR}/duckdb/third_party
     ${CMAKE_CURRENT_SOURCE_DIR}/duckdb/third_party/httplib
 )

@@ -37,4 +37,4 @@ docs:
     to a remote host:port over one of three transports: classic SSH local port
     forwarding (libssh2, no Go), or an in-process mesh-VPN node (Tailscale via tsnet,
     NetBird via client/embed) that is embedded in the extension and loaded only when a
-    mesh backend is first used. No daemon, no root, no kernel TUN. Minimum DuckDB v1.4.5.
+    mesh backend is first used. No daemon, no root, no kernel TUN. Minimum DuckDB v1.5.6.
