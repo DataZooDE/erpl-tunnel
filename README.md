@@ -1,5 +1,5 @@
 [![License: BSL 1.1](https://img.shields.io/badge/License-BSL%201.1-blue.svg)](LICENSE)
-[![DuckDB](https://img.shields.io/badge/DuckDB-1.4%2B-green.svg)](https://duckdb.org)
+[![DuckDB](https://img.shields.io/badge/DuckDB-1.5%2B-green.svg)](https://duckdb.org)
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 # ERPL Tunnel — reach any TCP service from DuckDB, through SSH or a mesh VPN
@@ -47,7 +47,7 @@ duckdb -unsigned
 
 > **Publication status.** [get.erpl.io](http://get.erpl.io) is the distribution
 > channel today, covering `{linux_amd64, linux_arm64, osx_amd64, osx_arm64,
-> windows_amd64} × {DuckDB v1.4.5, v1.5.6}` — all with the three backends. musl
+> windows_amd64} × {DuckDB v1.5.6}` — all with the three backends. musl
 > and wasm are **not published**; build from source for those (musl is SSH-only).
 > The community-extensions submission (which would make `INSTALL erpl_tunnel FROM
 > community` work without `-unsigned`) is still in progress. You can also
