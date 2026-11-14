@@ -55,3 +55,4 @@ test/integration/headscale/.env
 # Codex delegation data
 .codex-delegate/
 .codex/
+.crew/
