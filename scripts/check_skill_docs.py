@@ -7,8 +7,15 @@ Checks plugins/erpl-tunnel/ and README.md against a built extension:
    frontmatter is a registered function or pragma (`duckdb_functions()`), or listed with a reason in
    scripts/doc_snippets/allowed_names.txt.
 2. Every backticked `erpl-tunnel-*` skill the plugin or README names exists under plugins/erpl-tunnel/skills.
-3. Every CREATE SECRET of TYPE tunnel / ssh_tunnel in a ```sql fence is accepted (created in :memory:; nothing
-   connects), and every fence whose first line is `-- check:offline` runs.
+3. Fence markers (first line of a ```sql fence):
+     `-- check:offline`  the whole fence runs and must succeed;
+     `-- check:skip …`   the fence is ignored (needs a network, a mesh account, an SSH server);
+     no marker           only its CREATE SECRET … TYPE tunnel/ssh_tunnel statements run (nothing connects).
+   A CREATE SECRET statement is taken to end at the first `);`.
+4. plugins/erpl-tunnel/.claude-plugin/plugin.json `version` equals packaging/description.yml `version`.
+
+Needs a mesh-enabled build (MESH_BACKEND=both): the skills name tunnel_peers / tunnel_self /
+tunnel_mesh_activate, which SSH-only builds do not register.
 
 Usage: python3 scripts/check_skill_docs.py [--duckdb CMD] [--preamble SQL]
 Default: build/release/duckdb with `LOAD '<build>/erpl_tunnel.duckdb_extension'`. Exit 0 clean, 1 on FAIL or
@@ -37,8 +44,6 @@ PRAGMA_RE = re.compile(r"\bPRAGMA\s+(" + NAME + r")\b", re.IGNORECASE)
 SKILL_RE = re.compile(r"^erpl-tunnel-[a-z0-9-]+$")
 SECRET_RE = re.compile(r"CREATE\s+(?:OR\s+REPLACE\s+)?(?:PERSISTENT\s+|TEMPORARY\s+)?SECRET\b.*?\);",
                        re.IGNORECASE | re.DOTALL)
-# Shaped like a tunnel_* name but not part of the SQL surface.
-NOT_SURFACE = {"tunnel_id"}
 
 
 def files():
@@ -67,6 +72,8 @@ def run(cmd, preamble, sql):
             r = subprocess.run(cmd + ["-unsigned", "-bail", "-csv", ":memory:"], input=full, cwd=tmp,
                                capture_output=True, text=True, timeout=120, env=env)
             return r.returncode, r.stdout, r.stderr
+        except subprocess.TimeoutExpired:
+            return 124, "", "TIMEOUT after 120s"
         except OSError as e:
             print(f"ERROR: cannot run {' '.join(cmd)}: {e}", file=sys.stderr)
             sys.exit(2)
@@ -103,7 +110,7 @@ def scan(text):
             if SKILL_RE.match(span.strip()):
                 skills.append((span.strip(), i + 1))
         names += [(n, i + 1) for d, n in CALL_RE.findall(line) if not d]
-    return [(n.lower(), l) for n, l in names if n.lower() not in NOT_SURFACE], skills, fences
+    return [(n.lower(), l) for n, l in names], skills, fences
 
 
 def main():
@@ -133,15 +140,24 @@ def main():
         for lang, body, line in fences:
             if lang != "sql":
                 continue
-            stmts = [s for s in SECRET_RE.findall(body) if re.search(r"\bTYPE\s+(ssh_)?tunnel\b", s, re.I)]
-            if body.lstrip().startswith("-- check:offline"):
-                stmts.append(body)
+            head = body.lstrip()
+            if head.startswith("-- check:skip"):
+                continue
+            if head.startswith("-- check:offline"):
+                stmts = [body]
+            else:
+                stmts = [s for s in SECRET_RE.findall(body) if re.search(r"\bTYPE\s+(ssh_)?tunnel\b", s, re.I)]
             for stmt in stmts:
                 rc, out, err = run(cmd, args.preamble, stmt)
                 if rc == 0:
                     passes += 1
                 else:
-                    fails.append(f"FAIL\t{path}:{line}\t{(err or out).strip().splitlines()[0][:200]}")
+                    first = ((err or out).strip().splitlines() or ["(no output)"])[0]
+                    fails.append(f"FAIL\t{path}:{line}\t{first[:200]}")
+    pv = re.search(r'"version":\s*"([^"]+)"', open(os.path.join(REPO, PLUGIN, ".claude-plugin", "plugin.json")).read())
+    dv = re.search(r"^\s*version:\s*(\S+)", open(os.path.join(REPO, "packaging", "description.yml")).read(), re.M)
+    if not pv or not dv or pv.group(1) != dv.group(1):
+        fails.append(f"FAIL\tplugin.json version {pv and pv.group(1)} != packaging/description.yml {dv and dv.group(1)}")
     for name in sorted(allow - mentioned):
         fails.append(f"STALE\tscripts/doc_snippets/allowed_names.txt\t{name} is no longer mentioned")
     print("\n".join(fails))

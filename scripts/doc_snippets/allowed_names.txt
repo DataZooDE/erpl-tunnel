@@ -1,1 +1,2 @@
 # Names shaped like tunnel_* that docs mention but no build registers: name<TAB>reason
+tunnel_id	the id column of tunnels() and the argument of tunnel_close

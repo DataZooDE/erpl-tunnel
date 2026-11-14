@@ -18,10 +18,16 @@ user-invocable: false
 -- check:offline
 LOAD erpl_tunnel;
 SELECT tunnel_id, backend, direction, remote_host, remote_port, local_port, bind_addr, status FROM tunnels();
-PRAGMA tunnel_close_all;
 ```
 
-`PRAGMA tunnel_close(<id>)` closes one tunnel; both are idempotent. Tunnels live as long as the DuckDB process.
+Closing (both idempotent):
+
+```text
+PRAGMA tunnel_close(<tunnel_id>);   -- one tunnel
+PRAGMA tunnel_close_all;            -- every import and export of this process
+```
+
+Tunnels live as long as the DuckDB process.
 
 ## Symptoms
 
@@ -29,13 +35,13 @@ PRAGMA tunnel_close_all;
 |---|---|---|
 | `Tunnel: secret 'X' not found` | Secret not created (or other name) | `CREATE SECRET X (TYPE tunnel, …)` first |
 | `SSH agent authentication is not supported` | Agent auth | `auth_method 'key'` + `private_key_path`, or `'password'` |
-| `local port N is already in use` | Port taken | Another `local_port` |
+| `local port N is already in use` (mesh) / `Failed to bind to port N…` in `tunnels().status` (SSH) | Port taken | Another `local_port`, and re-point the client (SAP: `GWSERV`) |
 | `tsnet.Up: context deadline exceeded` | Control server unreachable | Check `control_url`; from a container `127.0.0.1` is the container |
-| Tailscale node has no tags | Untagged auth key | Own tags in the ACL, regenerate the key with tags; check `tunnel_self(...).tags` |
+| Tailscale registration refused, or tags missing | `tag:erpl-tunnel` (or a role tag) not owned in `tagOwners` / not on the key | Own the tags, regenerate the key with them; check `tunnel_self(...).tags` |
 | Enrolled but no traffic (Headscale) | Embedded DERP is plain HTTP | Same-subnet direct connections work; front Headscale with TLS |
 | NetBird `Connected` but nothing flows | Default-drop iptables firewall without `ip_set_hash_net` | `NB_FORCE_USERSPACE_FIREWALL=true` in the process environment |
 | NetBird `groups` has no effect | Groups come from the setup key | Set groups on the key |
-| `nothing is listening on 127.0.0.1:N` (export) | Local service not started | Start it, then export |
+| `nothing is listening on 127.0.0.1:N` (SSH export) | Local service not started | Start it, then export. Mesh exports do not check — start the service first anyway |
 | `remote_host applies only to the ssh backend` | Mesh export | Drop `remote_host`; peers use `tunnel_self` |
 | SSH server refused the remote port | sshd forwarding policy, taken port, port < 1024 | `AllowTcpForwarding yes`, free port > 1024, or `remote_port = 0` |
 | Export reachable only on the SSH server | `GatewayPorts no` | `GatewayPorts yes` |
@@ -48,6 +54,7 @@ PRAGMA tunnel_close_all;
 Anonymous usage telemetry (no hosts, credentials or SQL) is on by default; turn it off with
 `SET erpl_telemetry_enabled = false;` or `DATAZOO_DISABLE_TELEMETRY=1`.
 
-More: `docs/guides/troubleshooting.md` in the erpl-tunnel repository.
+This table follows the erpl-tunnel troubleshooting guide:
+https://github.com/DataZooDE/erpl-tunnel/blob/main/docs/guides/troubleshooting.md
 
 See also: `erpl-tunnel-setup`, `erpl-tunnel-import`, `erpl-tunnel-export`.

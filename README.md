@@ -228,7 +228,7 @@ changes run `claude --plugin-dir ./plugins/erpl-tunnel`.
 | `tunnel_close(id)` / `tunnel_close_all` | pragma | Close one / all tunnels (idempotent). |
 | `tunnel_peers(secret)` † | table | Mesh peers (peer-local, no API token): `backend, host_name, dns_name, mesh_ip, tags, online`. Tailscale today; NetBird returns an empty set (the embed API exposes no peer list — use `tunnel_self` for your own address, and the dashboard for others). |
 | `tunnel_self(secret)` † | table | This node's own mesh identity — including the `mesh_ip` peers should dial. |
-| `tunnel_mesh_activate('tailscale'\|'netbird')` † | pragma | *Advanced* — force-load a mesh backend now. Normally automatic on first `tunnel_import`/`tunnel_peers`; use only to surface auth errors early or pin the one mesh for this process. |
+| `tunnel_mesh_activate('tailscale'\|'netbird')` † | pragma | *Advanced* — load a mesh backend now and pin this process to it. Normally automatic on first `tunnel_import`/`tunnel_peers`; use it to surface load errors early or to pin the one mesh. It does not check credentials — `tunnel_self(secret)` does. |
 
 † Present only in **mesh-enabled builds** — the published Linux, macOS and Windows
 artifacts; not in musl/wasm SSH-only builds. Check what your build has with
@@ -284,7 +284,8 @@ keep working.
 
 ### Secret fields
 
-```text
+```sql
+-- check:skip (field reference, not runnable as written)
 -- SSH (TYPE ssh_tunnel or TYPE tunnel, backend 'ssh')
 CREATE SECRET s (TYPE ssh_tunnel, host '…', port 22, user '…',
     password '…' /* or */ private_key_path '…', passphrase '…');

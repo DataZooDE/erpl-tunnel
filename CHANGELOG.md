@@ -20,8 +20,11 @@ from source if you need them (musl is SSH-only).
 ## Unreleased
 
 - **[docs]** A Claude Code plugin in `plugins/erpl-tunnel/` with four skills (setup, import, export, operate);
-  `make check-skills` checks it against the built extension. The community-extensions descriptor's example uses
-  `tunnel_import` with `=` (the pragmas reject `:=`).
+  `make check-skills` checks it against the built extension (in CI after the mesh build). The community-extensions
+  descriptor's example uses `tunnel_import` with `=` (the pragmas reject `:=`) and the SAP gateway port 3300, and
+  its version is 2026.10.20.
+- **[docs]** Corrected: a mesh `tunnel_export` does not probe the local port (only SSH does), and
+  `tunnel_mesh_activate` loads and pins the backend without checking credentials (`tunnel_self` does).
 
 ## v2026.10.20
 

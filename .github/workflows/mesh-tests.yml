@@ -154,6 +154,9 @@ jobs:
       - name: Build release (MESH_BACKEND=both)
         env: { MESH_BACKEND: both, GEN: ninja }
         run: make release
+      - name: Check the Claude Code plugin against the build
+        # Needs this mesh-enabled build: the skills name tunnel_peers / tunnel_self.
+        run: python3 scripts/check_skill_docs.py
       - name: Load in a bare container
         # ubuntu-latest builds on a rolling glibc, so the probe image has to match or
         # newer; the published artifact is built on manylinux and runs anywhere.

@@ -22,11 +22,16 @@ in-process Tailscale or NetBird node. No daemon, no root, nothing else to instal
 2. **Named parameters use `=`** in the pragmas: `PRAGMA tunnel_import(secret = 's', …)`. `:=` is rejected.
 3. **One mesh per process.** Tailscale and NetBird each embed a Go runtime; the first mesh used pins the process.
    Using the other one afterwards is an error — start another process.
-4. **Tags and groups come from the key, not the secret.** An untagged Tailscale auth key gives an untagged node
-   without an error; NetBird's `groups` field cannot change anything — set groups on the setup key.
-5. **SSH agent authentication is not supported**: use `auth_method 'key'` with `private_key_path`, or
+4. **Every node advertises `tag:erpl-tunnel`** (plus the secret's `tags`), but tags are *granted* from the
+   auth key: to get them, own the tags in the tailnet's `tagOwners` and select them on the key. If enrolment is
+   refused or `tunnel_self(...).tags` comes back without them, that is the place to look. NetBird's `groups`
+   field cannot change anything — set groups on the setup key.
+5. **SSH host keys are not verified.** erpl_tunnel does not check the server's host key, so key authentication
+   protects your credential but does not authenticate the bastion. Use SSH tunnels only across networks you
+   trust; prefer a mesh backend otherwise.
+6. **SSH agent authentication is not supported**: use `auth_method 'key'` with `private_key_path`, or
    `'password'`.
-6. **Mesh functions exist only in mesh-enabled builds** (published Linux, macOS, Windows); musl builds are
+7. **Mesh functions exist only in mesh-enabled builds** (published Linux, macOS, Windows); musl builds are
    SSH-only. Check: `SELECT function_name FROM duckdb_functions() WHERE function_name LIKE 'tunnel_%';`.
 
 ## Install
@@ -68,18 +73,22 @@ CREATE SECRET nb (TYPE tunnel, backend 'netbird',
 
 ### Getting keys
 
-- **Tailscale**: admin console → Settings → Keys → *Generate auth key* — *Reusable* and *Ephemeral*; leave
-  *Tags* empty for a first run. For tags, own them in the ACL (`tagOwners`) and select them on the key.
+- **Tailscale**: first own `tag:erpl-tunnel` (and any role tag) in the ACL's `tagOwners`; then admin console →
+  Settings → Keys → *Generate auth key* — *Ephemeral*, a short expiry, and the tags selected. Tagged nodes do not
+  expire on their own, so prefer ephemeral nodes and short-lived keys.
 - **NetBird**: dashboard → Setup Keys → *Create* — *Reusable*, optionally an auto-assigned group; then make sure
   an **Access Control policy** lets that group reach the target (NetBird is default-deny).
 
 ## Verify
 
 ```sql
--- check:skip-live (needs a mesh account)
-PRAGMA tunnel_mesh_activate('tailscale');          -- surface auth errors now instead of at first use
-SELECT * FROM tunnel_self(secret = 'ts');          -- this node's mesh_ip and granted tags
+-- check:skip (needs a mesh account)
+SELECT * FROM tunnel_self(secret = 'ts');          -- enrols the node: mesh_ip and the tags actually granted
 ```
+
+`tunnel_self` is the enrolment check — it uses the credentials. `PRAGMA tunnel_mesh_activate('tailscale')` only
+loads the backend and pins the process to it (surfacing load errors early); it does not check credentials.
+A non-empty `state_dir` keeps the node identity on disk: mode 0700, not on shared volumes.
 
 See also: `erpl-tunnel-import` (reach a service), `erpl-tunnel-export` (publish a service),
 `erpl-tunnel-operate` (status, troubleshooting).

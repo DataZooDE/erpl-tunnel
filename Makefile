@@ -188,7 +188,8 @@ core_tests:
 
 # Check the Claude Code plugin (plugins/erpl-tunnel/) and README against the built
 # extension: every tunnel_* name registered, every skill reference resolves, every
-# tunnel secret accepted, every `-- check:offline` fence runs. Offline.
+# tunnel secret accepted, every `-- check:offline` fence runs. Offline. Needs a
+# mesh-enabled build (MESH_BACKEND=both); CI runs it in mesh-tests.yml.
 .PHONY: check-skills
 check-skills: release
 	python3 scripts/check_skill_docs.py
