@@ -1,0 +1,12 @@
+{
+  "name": "erpl-tunnel",
+  "description": "Skills for the erpl_tunnel DuckDB extension: set up SSH, Tailscale and NetBird tunnel secrets, reach SAP and other services behind bastions or on a mesh, publish a DuckDB onto a tailnet, and operate and troubleshoot tunnels.",
+  "version": "2026.10.20",
+  "author": {
+    "name": "DataZoo GmbH",
+    "url": "https://github.com/DataZooDE"
+  },
+  "homepage": "https://github.com/DataZooDE/erpl-tunnel",
+  "repository": "https://github.com/DataZooDE/erpl-tunnel",
+  "license": "BUSL-1.1"
+}

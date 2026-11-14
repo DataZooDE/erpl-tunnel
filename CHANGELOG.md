@@ -17,6 +17,12 @@ self-distributed binaries are not signed with DuckDB's key. Every published
 platform carries all three backends. musl and wasm are **not published** — build
 from source if you need them (musl is SSH-only).
 
+## Unreleased
+
+- **[docs]** A Claude Code plugin in `plugins/erpl-tunnel/` with four skills (setup, import, export, operate);
+  `make check-skills` checks it against the built extension. The community-extensions descriptor's example uses
+  `tunnel_import` with `=` (the pragmas reject `:=`).
+
 ## v2026.10.20
 
 - **[build]** Builds on **DuckDB 2.0** as well, from the same source tree as v1.4.5 LTS

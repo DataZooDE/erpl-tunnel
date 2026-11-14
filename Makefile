@@ -185,3 +185,10 @@ core_tests:
 	    test/cpp/test_mesh_peers_json.cpp src/mesh_peers_json.cpp duckdb/third_party/yyjson/yyjson.cpp \
 	    -o build/core_tests
 	build/core_tests
+
+# Check the Claude Code plugin (plugins/erpl-tunnel/) and README against the built
+# extension: every tunnel_* name registered, every skill reference resolves, every
+# tunnel secret accepted, every `-- check:offline` fence runs. Offline.
+.PHONY: check-skills
+check-skills: release
+	python3 scripts/check_skill_docs.py

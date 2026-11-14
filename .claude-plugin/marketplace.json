@@ -1,0 +1,16 @@
+{
+  "name": "erpl-tunnel",
+  "description": "Claude Code plugin for erpl_tunnel — SSH, Tailscale and NetBird tunnels from DuckDB.",
+  "owner": {
+    "name": "DataZoo GmbH",
+    "url": "https://github.com/DataZooDE"
+  },
+  "plugins": [
+    {
+      "name": "erpl-tunnel",
+      "source": "./plugins/erpl-tunnel",
+      "description": "Skills for the erpl_tunnel DuckDB extension: set up SSH, Tailscale and NetBird tunnel secrets, reach SAP and other services behind bastions or on a mesh, publish a DuckDB onto a tailnet, and operate and troubleshoot tunnels.",
+      "keywords": ["duckdb", "ssh", "tailscale", "netbird", "tunnel", "sap", "claude-code"]
+    }
+  ]
+}

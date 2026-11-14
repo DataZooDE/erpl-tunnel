@@ -195,6 +195,27 @@ More detail per backend, plus how to get the keys and run your own control serve
 [discovery](docs/guides/discovery.md) · [security](docs/guides/security.md) ·
 [troubleshooting](docs/guides/troubleshooting.md).
 
+## 🤖 Claude Code plugin
+
+erpl_tunnel ships a [Claude Code](https://claude.com/claude-code) plugin, so an assistant setting up tunnels with
+you knows the secrets, pragmas and failure modes. Install it in any Claude Code session:
+
+```
+/plugin marketplace add DataZooDE/erpl-tunnel
+/plugin install erpl-tunnel@erpl-tunnel
+```
+
+| Skill | Covers |
+|-------|--------|
+| `erpl-tunnel-setup` | Install, SSH / Tailscale / NetBird secrets, keys and tags, one mesh per process |
+| `erpl-tunnel-import` | Reaching SAP, Postgres, HTTP or a published DuckDB through a tunnel; SAP port mapping; peer discovery |
+| `erpl-tunnel-export` | Publishing a DuckDB (e.g. an SAP gateway) onto a mesh or via SSH reverse tunnel; security checklist |
+| `erpl-tunnel-operate` | `tunnels()`, closing, and the troubleshooting table |
+
+For the SAP side, install the erpl plugin too (`/plugin marketplace add DataZooDE/erpl` →
+`/plugin install erpl@erpl`). `make check-skills` checks the skills against the built extension; to try local
+changes run `claude --plugin-dir ./plugins/erpl-tunnel`.
+
 ## 📖 Reference
 
 ### SQL surface
@@ -263,7 +284,7 @@ keep working.
 
 ### Secret fields
 
-```sql
+```text
 -- SSH (TYPE ssh_tunnel or TYPE tunnel, backend 'ssh')
 CREATE SECRET s (TYPE ssh_tunnel, host '…', port 22, user '…',
     password '…' /* or */ private_key_path '…', passphrase '…');
