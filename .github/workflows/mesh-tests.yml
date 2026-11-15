@@ -138,7 +138,7 @@ jobs:
   zero-dep:
     name: Zero-dependency proof (NFR-1)
     timeout-minutes: 55
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # matches the BASE_IMAGE probe container: binaries built here must run in ubuntu:24.04
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
@@ -457,7 +457,7 @@ jobs:
   tailscale-dataplane:
     name: Tailscale data plane (Tier 2, real WireGuard)
     timeout-minutes: 55
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # matches the BASE_IMAGE probe container: binaries built here must run in ubuntu:24.04
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
@@ -488,7 +488,7 @@ jobs:
   quack-over-tailscale:
     name: quack over Tailscale (tunnel_export acceptance)
     timeout-minutes: 55
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # matches the BASE_IMAGE probe container: binaries built here must run in ubuntu:24.04
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
@@ -532,7 +532,7 @@ jobs:
   quack-over-netbird:
     name: quack over NetBird (tunnel_export acceptance)
     timeout-minutes: 55
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # matches the BASE_IMAGE probe container: binaries built here must run in ubuntu:24.04
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
@@ -565,7 +565,7 @@ jobs:
   netbird-dataplane:
     name: NetBird data plane (Tier 2, real WireGuard, no IdP)
     timeout-minutes: 55
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # matches the BASE_IMAGE probe container: binaries built here must run in ubuntu:24.04
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
