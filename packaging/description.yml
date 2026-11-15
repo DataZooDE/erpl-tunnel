@@ -5,7 +5,7 @@ extension:
   name: erpl_tunnel
   description: Tunnel raw TCP (quack, SAP RFC, HTTP) over SSH, Tailscale, or NetBird from DuckDB
   # CalVer, matching the erpl / erpl-web release scheme (git tag vYYYY.MM.DD).
-  version: 2026.07.24
+  version: 2026.10.20
   language: C++
   build: cmake
   license: BSL-1.1
@@ -27,8 +27,8 @@ docs:
     -- Open an SSH tunnel to reach a service behind a firewall, then use localhost:port
     CREATE SECRET s (TYPE ssh_tunnel, host 'bastion.example.com', user 'jump',
                      password 'secret');
-    PRAGMA tunnel_create(secret := 's', remote_host := 'sap.internal', remote_port := 3300,
-                         local_port := 9001);
+    PRAGMA tunnel_import(secret = 's', remote_host = 'sap.internal', remote_port = 3300,
+                         local_port = 3300);
     SELECT * FROM tunnels();
   extended_description: |
     erpl_tunnel lets a DuckDB instance reach a remote TCP endpoint — the DuckDB quack

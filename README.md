@@ -195,6 +195,27 @@ More detail per backend, plus how to get the keys and run your own control serve
 [discovery](docs/guides/discovery.md) · [security](docs/guides/security.md) ·
 [troubleshooting](docs/guides/troubleshooting.md).
 
+## 🤖 Claude Code plugin
+
+erpl_tunnel ships a [Claude Code](https://claude.com/claude-code) plugin, so an assistant setting up tunnels with
+you knows the secrets, pragmas and failure modes. Install it in any Claude Code session:
+
+```
+/plugin marketplace add DataZooDE/erpl-tunnel
+/plugin install erpl-tunnel@erpl-tunnel
+```
+
+| Skill | Covers |
+|-------|--------|
+| `erpl-tunnel-setup` | Install, SSH / Tailscale / NetBird secrets, keys and tags, one mesh per process |
+| `erpl-tunnel-import` | Reaching SAP, Postgres, HTTP or a published DuckDB through a tunnel; SAP port mapping; peer discovery |
+| `erpl-tunnel-export` | Publishing a DuckDB (e.g. an SAP gateway) onto a mesh or via SSH reverse tunnel; security checklist |
+| `erpl-tunnel-operate` | `tunnels()`, closing, and the troubleshooting table |
+
+For the SAP side, install the erpl plugin too (`/plugin marketplace add DataZooDE/erpl` →
+`/plugin install erpl@erpl`). `make check-skills` checks the skills against the built extension; to try local
+changes run `claude --plugin-dir ./plugins/erpl-tunnel`.
+
 ## 📖 Reference
 
 ### SQL surface
@@ -207,7 +228,7 @@ More detail per backend, plus how to get the keys and run your own control serve
 | `tunnel_close(id)` / `tunnel_close_all` | pragma | Close one / all tunnels (idempotent). |
 | `tunnel_peers(secret)` † | table | Mesh peers (peer-local, no API token): `backend, host_name, dns_name, mesh_ip, tags, online`. Tailscale today; NetBird returns an empty set (the embed API exposes no peer list — use `tunnel_self` for your own address, and the dashboard for others). |
 | `tunnel_self(secret)` † | table | This node's own mesh identity — including the `mesh_ip` peers should dial. |
-| `tunnel_mesh_activate('tailscale'\|'netbird')` † | pragma | *Advanced* — force-load a mesh backend now. Normally automatic on first `tunnel_import`/`tunnel_peers`; use only to surface auth errors early or pin the one mesh for this process. |
+| `tunnel_mesh_activate('tailscale'\|'netbird')` † | pragma | *Advanced* — load a mesh backend now and pin this process to it. Normally automatic on first `tunnel_import`/`tunnel_peers`; use it to surface load errors early or to pin the one mesh. It does not check credentials — `tunnel_self(secret)` does. |
 
 † Present only in **mesh-enabled builds** — the published Linux, macOS and Windows
 artifacts; not in musl/wasm SSH-only builds. Check what your build has with
@@ -264,6 +285,7 @@ keep working.
 ### Secret fields
 
 ```sql
+-- check:skip (field reference, not runnable as written)
 -- SSH (TYPE ssh_tunnel or TYPE tunnel, backend 'ssh')
 CREATE SECRET s (TYPE ssh_tunnel, host '…', port 22, user '…',
     password '…' /* or */ private_key_path '…', passphrase '…');

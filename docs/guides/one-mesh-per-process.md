@@ -28,9 +28,10 @@ You can **preselect** the mesh for this process without enrolling a tunnel yet:
 PRAGMA tunnel_mesh_activate('tailscale');   -- or 'netbird'
 ```
 
-This surfaces any load/auth problem immediately and pins the one mesh this process
-will use. It's optional — the first `tunnel_import`/`tunnel_peers` on a mesh secret
-does the same thing lazily.
+This surfaces any load problem immediately and pins the one mesh this process will
+use. It reads no secret, so credentials are checked later — by `tunnel_self(secret)`
+or the first `tunnel_import`/`tunnel_peers` on a mesh secret, which also load the
+backend lazily.
 
 ## What this means in practice
 

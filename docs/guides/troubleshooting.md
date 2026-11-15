@@ -71,11 +71,13 @@ curlimages/curl -s http://<overlay-ip>:8000/…`.
 
 ## Exporting a port (`tunnel_export`)
 
-**`nothing is listening on 127.0.0.1:N, so there is nothing to export`** — the local
-service must be running *before* you export it. `tunnel_export` probes it first on
-purpose: a listener published onto the network with nothing behind it fails later,
-from a peer, with a much worse error. Start the service, or fix `local_host`/
-`local_port`.
+**`nothing is listening on 127.0.0.1:N, so there is nothing to export`** (SSH) — the
+local service must be running *before* you export it. An SSH `tunnel_export` probes it
+first on purpose: a listener published onto the network with nothing behind it fails
+later, from a peer, with a much worse error. Start the service, or fix `local_host`/
+`local_port`. A **mesh** export does not probe — it publishes the port even when
+nothing listens yet, and whatever binds it later is exposed — so start the
+(authenticated) service before exporting there too.
 
 **`remote_host applies only to the ssh backend`** — on a mesh there is no host to
 name; the service is published on your own node's address. Drop `remote_host` and
