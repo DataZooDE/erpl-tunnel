@@ -32,7 +32,10 @@ cat >&9 <<SQL
 LOAD '$EXT';
 SELECT 'LOADED' AS marker;
 SQL
-for _ in $(seq 1 20); do grep -q LOADED "$OUT" && break; sleep 0.3; done
+# Up to 60 s: the mesh build embeds ~150 MB of shim blobs, and a DuckDB 2.0 DEBUG
+# build (what CI runs here) takes well over the 6 s this used to allow to LOAD it.
+# Stop early on an error so a real load failure still prints at once.
+for _ in $(seq 1 120); do grep -qE "LOADED|Error" "$OUT" && break; sleep 0.5; done
 grep -q LOADED "$OUT" || { echo "FAIL: extension did not load"; cat "$OUT"; exit 1; }
 
 maps_have_go() {
