@@ -59,7 +59,7 @@ Kept honest on purpose: an empty cell means *not covered*, not *probably fine*.
 | `netbird-dataplane` | ubuntu | real WireGuard payload, self-hosted no-IdP NetBird |
 
 `MainDistributionPipeline.yml` builds and tests the release matrix for DuckDB
-v1.5.x (plus a DuckDB 2.0 pre-release build) across linux amd64/arm64/musl, osx amd64/arm64 and
+DuckDB v1.5.6 and v2.0.1 across linux amd64/arm64/musl, osx amd64/arm64 and
 windows amd64. It sets `ERPL_REQUIRE_MESH`, so a Windows build that cannot find a
 mingw toolchain fails loudly instead of silently publishing an SSH-only artifact
 (`ERPL_REQUIRE_MESH` defaults ON for every build, not just ours).

@@ -18,6 +18,16 @@ on:
       duckdb_version:
         required: true
         type: string
+      # extension-ci-tools ref used to generate the deploy arch matrix. Must
+      # match the ci_tools_version the build job used: the 2.0 line
+      # (v2.0-cyanoptera) no longer builds osx_amd64, the 1.5 line does. With
+      # the repo's own submodule (pinned to one line) the other line's deploy
+      # either expects an artifact that was never built or silently skips one.
+      # Defaults to duckdb_version when empty.
+      ci_tools_version:
+        required: false
+        type: string
+        default: ""
       # ';' separated list of architectures to exclude, for example: 'linux_amd64;osx_arm64'
       exclude_archs:
         required: false
@@ -54,6 +64,7 @@ jobs:
     name: Generate matrix
     timeout-minutes: 15
     runs-on: ubuntu-latest
+    if: ${{ inputs.deploy_latest || inputs.deploy_versioned }}
     outputs:
       deploy_matrix: ${{ steps.parse-matrices.outputs.deploy_matrix }}
     steps:
@@ -65,7 +76,18 @@ jobs:
       - name: Checkout DuckDB to version
         run: |
           cd duckdb
+          git fetch --depth 1 origin tag ${{ inputs.duckdb_version }} || true
           git checkout ${{ inputs.duckdb_version }}
+
+      - name: Checkout extension-ci-tools to version
+        # The SAME tools ref the build job used, so the parsed arch matrix lines
+        # up with what the build produced. Branch first, tag fallback.
+        run: |
+          cd extension-ci-tools
+          REF="${{ inputs.ci_tools_version != '' && inputs.ci_tools_version || inputs.duckdb_version }}"
+          git fetch --depth 1 origin "$REF" || \
+            git fetch --depth 1 origin tag "$REF"
+          git checkout FETCH_HEAD
 
       - id: parse-matrices
         run: |
@@ -79,7 +101,7 @@ jobs:
     timeout-minutes: 15
     runs-on: ubuntu-latest
     needs: generate_matrix
-    if: ${{ needs.generate_matrix.outputs.deploy_matrix != '{}' && needs.generate_matrix.outputs.deploy_matrix != '' }}
+    if: ${{ needs.generate_matrix.outputs.deploy_matrix != '{}' && needs.generate_matrix.outputs.deploy_matrix != '' && (inputs.deploy_latest || inputs.deploy_versioned) }}
     strategy:
       matrix: ${{fromJson(needs.generate_matrix.outputs.deploy_matrix)}}
 
@@ -99,6 +121,7 @@ jobs:
       - name: Checkout DuckDB to version
         run: |
           cd duckdb
+          git fetch --depth 1 origin tag ${{ inputs.duckdb_version }} || true
           git checkout ${{ inputs.duckdb_version }}
 
       - uses: actions/download-artifact@v4

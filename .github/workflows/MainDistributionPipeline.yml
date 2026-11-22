@@ -75,6 +75,9 @@ jobs:
     secrets: inherit
     with:
       duckdb_version: v1.5.6
+      # The deploy matrix must come from the build's own ci-tools line: the repo's
+      # extension-ci-tools submodule is on v2.0-cyanoptera, which has no osx_amd64.
+      ci_tools_version: v1.5-variegata
       extension_name: erpl_tunnel
       exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;'   # mingw excluded: upstream MSYS2 libtool-2.4.7-4 404 breaks openssl:x64-mingw-static
       deploy_latest: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
@@ -86,24 +89,46 @@ jobs:
       # that gate is ever widened.
       deploy_versioned: ${{ startsWith(github.ref, 'refs/tags/v') }}
 
-  # ---- DuckDB 2.0 (pre-release) ---------------------------------------------
-  # community-extensions builds repo.ref against this commit (DUCKDB_LATEST_STABLE
-  # in its build.yml); keep the SHA in step with it. Build + SQL tests only: no
-  # smoke test (no stock 2.0 CLI to download) and no deploy (an alpha binary only
-  # loads into that alpha).
-  duckdb-next-build:
-    name: Build & test (v2.0 pre-release)
+  # ---- DuckDB v2.0.1 ---------------------------------------------------------
+  duckdb-v201-build:
+    name: Build & test (v2.0.1)
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v2.0-cyanoptera
     with:
-      duckdb_version: b15358c371daf10dad799a43b6167f6ccdce84d8
+      duckdb_version: v2.0.1
       ci_tools_version: v2.0-cyanoptera
       extension_name: erpl_tunnel
       vcpkg_commit: 84bab45d415d22042bd0b9081aea57f362da3f35
       extra_toolchains: 'go'
-      reduced_ci_mode: 'disabled'
+      reduced_ci_mode: 'disabled'   # build the FULL matrix on PRs too, so the smoke test finds every artifact
       exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;'
       extra_extension_config: |
         if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
           set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-gnu-unique")
         endif()
         set(ERPL_REQUIRE_MESH ON)
+
+  duckdb-v201-smoke-test:
+    name: Smoke test (v2.0.1)
+    needs: duckdb-v201-build
+    uses: ./.github/workflows/_extension_smoke_test.yml
+    with:
+      duckdb_version: v2.0.1
+      extension_name: erpl_tunnel
+      exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;'
+
+  duckdb-v201-deploy:
+    name: Deploy (v2.0.1)
+    needs: [duckdb-v201-build, duckdb-v201-smoke-test]
+    # Same gate as the v1.5.6 line: self-hosted S3 distribution only on release tags.
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    uses: ./.github/workflows/_extension_deploy.yml
+    secrets: inherit
+    with:
+      duckdb_version: v2.0.1
+      ci_tools_version: v2.0-cyanoptera
+      extension_name: erpl_tunnel
+      exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;windows_amd64_mingw;'
+      deploy_latest: ${{ startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' }}
+      # Versioned paths come ONLY from the tag run (release deploy race, see the
+      # v1.5.6 deploy job).
+      deploy_versioned: ${{ startsWith(github.ref, 'refs/tags/v') }}

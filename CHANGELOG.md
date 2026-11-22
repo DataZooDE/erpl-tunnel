@@ -4,8 +4,8 @@ All notable changes to `erpl_tunnel` are documented here. Versions follow
 `vYYYY.MM.DD` (the date the binary set was cut). Same-day re-cuts append `.N`.
 
 Binaries are self-distributed via [get.erpl.io](http://get.erpl.io) for
-`{linux_amd64, linux_arm64, osx_amd64, osx_arm64, windows_amd64} ×
-{DuckDB v1.4.5, v1.5.6}`. Install with:
+`{linux_amd64, linux_arm64, osx_amd64, osx_arm64, windows_amd64} × {DuckDB v1.5.6}`
+and `{linux_amd64, linux_arm64, osx_arm64, windows_amd64} × {DuckDB v2.0.1}`. Install with:
 
 ```sql
 INSTALL erpl_tunnel FROM 'http://get.erpl.io';
@@ -19,6 +19,10 @@ from source if you need them (musl is SSH-only).
 
 ## Unreleased
 
+- **[build]** Builds, smoke-tests and publishes on **DuckDB v2.0.1** (the stable 2.0
+  release; previously a 2.0 pre-release commit, build only). get.erpl.io now carries
+  v2.0.1 binaries next to v1.5.6 (no osx_amd64 on 2.0: DuckDB's 2.0 tooling no longer
+  builds it). The local default (`duckdb` submodule) is v2.0.1; v1.5.6 stays covered by CI.
 - **[docs]** A Claude Code plugin in `plugins/erpl-tunnel/` with four skills (setup, import, export, operate);
   `make check-skills` checks it against the built extension (in CI after the mesh build). The community-extensions
   descriptor's example uses `tunnel_import` with `=` (the pragmas reject `:=`) and the SAP gateway port 3300, and
