@@ -19,6 +19,8 @@ from source if you need them (musl is SSH-only).
 
 ## Unreleased
 
+## v2026.11.22
+
 - **[build]** Builds, smoke-tests and publishes on **DuckDB v2.0.1** (the stable 2.0
   release; previously a 2.0 pre-release commit, build only). get.erpl.io now carries
   v2.0.1 binaries next to v1.5.6 (no osx_amd64 on 2.0: DuckDB's 2.0 tooling no longer
@@ -26,9 +28,11 @@ from source if you need them (musl is SSH-only).
 - **[docs]** A Claude Code plugin in `plugins/erpl-tunnel/` with four skills (setup, import, export, operate);
   `make check-skills` checks it against the built extension (in CI after the mesh build). The community-extensions
   descriptor's example uses `tunnel_import` with `=` (the pragmas reject `:=`) and the SAP gateway port 3300, and
-  its version is 2026.10.20.
+  its version is 2026.11.22.
 - **[docs]** Corrected: a mesh `tunnel_export` does not probe the local port (only SSH does), and
   `tunnel_mesh_activate` loads and pins the backend without checking credentials (`tunnel_self` does).
+- **[ci]** Release deploys write versioned paths only from tag runs (#18); the Windows mesh job builds the Go shims
+  with the runner's mingw gcc, the toolchain the shipped Windows build uses (#20).
 
 ## v2026.10.20
 
