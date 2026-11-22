@@ -134,9 +134,16 @@ jobs:
           # ("Server does not allow request for unadvertised object"). The banner
           # repo is a handful of headers and scripts, so a full clone is cheap.
           git submodule update --init datazoo-banner
-          curl -sSL -o /tmp/duckdb_cli.zip \
-            "https://github.com/duckdb/duckdb/releases/download/${{ inputs.duckdb_version }}/duckdb_cli-linux-amd64.zip"
-          unzip -o -q /tmp/duckdb_cli.zip -d /tmp/duckdb_cli
+          # v2.0.1 renamed the CLI asset to duckdb-cli-linux-amd64.tar.gz; v1.5.6
+          # still ships duckdb_cli-linux-amd64.zip. New name first, then the old.
+          base="https://github.com/duckdb/duckdb/releases/download/${{ inputs.duckdb_version }}"
+          mkdir -p /tmp/duckdb_cli
+          if curl -fsSL -o /tmp/duckdb_cli.tar.gz "$base/duckdb-cli-linux-amd64.tar.gz"; then
+            tar -xzf /tmp/duckdb_cli.tar.gz -C /tmp/duckdb_cli
+          else
+            curl -fsSL -o /tmp/duckdb_cli.zip "$base/duckdb_cli-linux-amd64.zip"
+            unzip -o -q /tmp/duckdb_cli.zip -d /tmp/duckdb_cli
+          fi
           datazoo-banner/audit-function-docs.sh \
             --extension "${{ inputs.extension_name }}" \
             --artifact "./extension_artifact/${{ inputs.extension_name }}.duckdb_extension" \
