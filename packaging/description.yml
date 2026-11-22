@@ -5,7 +5,7 @@ extension:
   name: erpl_tunnel
   description: Tunnel raw TCP (quack, SAP RFC, HTTP) over SSH, Tailscale, or NetBird from DuckDB
   # CalVer, matching the erpl / erpl-web release scheme (git tag vYYYY.MM.DD).
-  version: 2026.10.20
+  version: 2026.11.22
   language: C++
   build: cmake
   license: BSL-1.1
