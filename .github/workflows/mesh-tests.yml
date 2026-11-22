@@ -327,9 +327,14 @@ jobs:
           MESH_BACKEND: both
           GEN: ninja
         run: |
+          # The runner image's own mingw first: it is what the shipped Windows build
+          # (MainDistributionPipeline, via cmake/bootstrap_mingw.cmake) picks up, so
+          # this job tests the same toolchain. The freshly installed msys2 gcc is only
+          # a fallback: msys2's 2026-11 update (gcc 16.2.0-7, crt r598) makes cgo fail
+          # on runtime/cgo ("cgo.exe: exit status 2").
           $candidates = @(
-            "${{ steps.msys2.outputs.msys2-location }}\mingw64\bin\x86_64-w64-mingw32-gcc.exe",
             "C:\mingw64\bin\x86_64-w64-mingw32-gcc.exe",
+            "${{ steps.msys2.outputs.msys2-location }}\mingw64\bin\x86_64-w64-mingw32-gcc.exe",
             "C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe"
           )
           foreach ($c in $candidates) { if (Test-Path $c) { $env:ERPL_MINGW_CC = $c; break } }
