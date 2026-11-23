@@ -19,6 +19,8 @@ from source if you need them (musl is SSH-only).
 
 ## Unreleased
 
+## v2026.11.23
+
 ### Fixed
 
 - **[build]** DuckDB v1.5.6 binaries carry the release tag as their extension version instead of the short commit
