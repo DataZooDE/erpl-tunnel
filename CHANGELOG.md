@@ -19,6 +19,12 @@ from source if you need them (musl is SSH-only).
 
 ## Unreleased
 
+### Fixed
+
+- **[build]** DuckDB v1.5.6 binaries carry the release tag as their extension version instead of the short commit
+  SHA: `extension_config.cmake` passes `EXTENSION_VERSION` when HEAD is on a `vX.Y.Z` tag (DuckDB 1.5.6's own
+  detection quotes its `--match` pattern, so no tag ever matched).
+
 ## v2026.11.22
 
 - **[build]** Builds, smoke-tests and publishes on **DuckDB v2.0.1** (the stable 2.0
