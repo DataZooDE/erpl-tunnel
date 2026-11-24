@@ -85,7 +85,8 @@ SELECT tunnel_id, direction, local_port, remote_port, status FROM tunnels();
   reach? (gotcha 1)
 - Who may reach it: an ACL on the gateway's role tag with an explicit source (mesh); `GatewayPorts` and firewall
   (SSH). Never `tag:erpl-tunnel`.
-- Is the SSH server trusted? erpl_tunnel does not verify SSH host keys (see `erpl-tunnel-setup`).
+- Is the SSH server the one you mean? Pin its host key with `host_key_fingerprint` on the secret (see
+  `erpl-tunnel-setup`); without it `tunnel_export` warns that the key was not verified.
 - How is it stopped: `PRAGMA tunnel_close(<id>);` stops accepting immediately.
 
 See also: `erpl-tunnel-setup`, `erpl-tunnel-import`, `erpl-tunnel-operate`. Serving data as REST or MCP instead of

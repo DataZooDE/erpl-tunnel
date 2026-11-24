@@ -19,6 +19,22 @@ from source if you need them (musl is SSH-only).
 
 ## Unreleased
 
+### Security
+
+- **[ssh]** SSH tunnels can verify the server's host key (#16). The new secret field `host_key_fingerprint` takes the
+  server's SHA256 fingerprint exactly as `ssh-keygen -lf` prints it (`SHA256:` + 43 base64 characters; the bare
+  base64 part is accepted). It is checked right after the SSH handshake: on a mismatch `tunnel_import` and
+  `tunnel_export` fail **before authenticating** — no password is sent, no key is offered — and the error names
+  the expected and the presented fingerprint. A malformed value is rejected at `CREATE SECRET`, and on a mesh
+  secret it is an error rather than silently ignored.
+- **[ssh]** Without `host_key_fingerprint` a tunnel connects as before but warns, once per tunnel, that the host key
+  was not verified: in the pragma's `message` column and in DuckDB's log (level WARNING), with the
+  fingerprint the server presented and how to pin it (`ssh-keyscan -p <port> <host> 2>/dev/null | ssh-keygen -lf -`).
+  No trust-on-first-use; nothing is read from or written to `known_hosts`.
+- **[test]** The docker bastion uses a fixed, committed test host key, so its fingerprint can be pinned. A new
+  `make host_key_e2e` (in CI) shows from sshd's own log that a wrong fingerprint stops the client before any
+  authentication attempt, and that the reported fingerprint matches `ssh-keygen`'s.
+
 ## v2026.11.23
 
 ### Fixed

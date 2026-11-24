@@ -59,8 +59,40 @@ created with restrictive permissions; keep it private.
 Pointing `control_url` (Headscale) or `management_url` (self-hosted NetBird) at
 infrastructure you run keeps all enrollment and coordination metadata on your side.
 
-## SSH host keys
+## SSH host keys — pin them with `host_key_fingerprint`
 
-The SSH backend authenticates *you* to the server; it does not currently pin the
-server's host key. Use it to reach hosts you trust (a bastion you operate), and
-prefer key auth over passwords.
+Authenticating *you* to the server does not authenticate the *server*. Without a
+host-key check, anyone on the network path can pose as the bastion: collect a
+password, or read and alter the forwarded traffic. Pin the server's key on the
+secret:
+
+```sql
+CREATE SECRET bastion (TYPE ssh_tunnel, host 'bastion.example.com', user 'jump',
+    private_key_path '/home/me/.ssh/id_ed25519',
+    host_key_fingerprint 'SHA256:57vu13dj2yi7gd0ERv87El7PwaTsEfigPRyHu4v1mNo');
+```
+
+Get the fingerprint out-of-band, from a machine and network you trust (or ask
+the server's administrator for `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`):
+
+```sh
+ssh-keyscan -p 22 bastion.example.com 2>/dev/null | ssh-keygen -lf -
+```
+
+The format is exactly what `ssh-keygen -lf` prints: `SHA256:` plus 43 base64
+characters (the bare base64 part is accepted too). Anything else — an MD5
+fingerprint, a truncated copy — is rejected at `CREATE SECRET`.
+
+| `host_key_fingerprint` | Result |
+|---|---|
+| set, matches | connects |
+| set, does not match | refused right after the handshake, **before authentication** — no password is sent, no key is offered. The error names the expected and the presented fingerprint. |
+| not set | connects as before, with a `WARNING: the SSH host key of … was NOT verified …` in the pragma's `message` column and in DuckDB's log (level WARNING; the DuckDB 2.0 CLI shows it) — once per tunnel, naming the presented fingerprint and how to pin it |
+
+The check covers both directions (`tunnel_import` and `tunnel_export`). There is
+no trust-on-first-use and nothing is read from or written to `known_hosts`. If the
+server has several host keys, `ssh-keyscan` lists them all; pin the one the
+warning (or the mismatch error) names, since that is the one negotiated. When a
+server's key legitimately changes, confirm the new fingerprint with its
+administrator before updating the secret. Prefer key auth over passwords either
+way.

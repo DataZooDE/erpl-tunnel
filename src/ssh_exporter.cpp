@@ -1,4 +1,5 @@
 #include "ssh_exporter.hpp"
+#include "ssh_host_key.hpp"
 
 #include "duckdb/common/exception.hpp"
 
@@ -153,6 +154,24 @@ void SshExporter::Start(int timeout_seconds) {
     if (libssh2_session_handshake(session_, ssh_socket_) != 0) {
         Close();
         throw IOException("tunnel_export: SSH handshake with " + auth_.ssh_host + " failed.");
+    }
+
+    // Verify the server's host key BEFORE authenticating (issue #16), so a mismatch
+    // never sends the password or offers the key.
+    {
+        std::string fingerprint;
+        std::string key_type = HostKeyTypeLabel(session_);
+        try {
+            fingerprint = VerifyHostKey(session_, auth_.host_key_fingerprint, auth_.ssh_host, auth_.ssh_port,
+                                        "tunnel_export");
+        } catch (...) {
+            Close();
+            throw;
+        }
+        std::lock_guard<std::mutex> lock(mu_);
+        attrs_.host_key_fingerprint = fingerprint;
+        attrs_.host_key_type = key_type;
+        attrs_.host_key_verified = !auth_.host_key_fingerprint.empty();
     }
 
     bool authed = false;

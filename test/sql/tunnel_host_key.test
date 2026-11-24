@@ -1,0 +1,168 @@
+# name: test/sql/tunnel_host_key.test
+# description: Issue #16 — the SSH server's host key is checked against the secret's
+#              host_key_fingerprint (SHA256, as `ssh-keygen -lf` prints it). A mismatch
+#              fails closed before authenticating; a missing fingerprint connects but
+#              warns with the server's real fingerprint. The first block needs no server.
+# group: [tunnel]
+
+require erpl_tunnel
+
+# ---------------------------------------------------------------------
+# Format validation at CREATE SECRET (no server needed)
+# ---------------------------------------------------------------------
+
+# The canonical form, exactly as `ssh-keygen -lf` prints it.
+statement ok
+CREATE SECRET hk_ok (TYPE ssh_tunnel, host 'h', user 'u', password 'p',
+    host_key_fingerprint 'SHA256:ATJVJJo261pwXqvVsiQkDjp1txG4h5V/rAtC0Q9nQo8');
+
+# The bare base64 part is accepted and stored in canonical form.
+statement ok
+CREATE SECRET hk_bare (TYPE tunnel, host 'h', user 'u', password 'p',
+    host_key_fingerprint 'ATJVJJo261pwXqvVsiQkDjp1txG4h5V/rAtC0Q9nQo8');
+
+query II
+SELECT name, secret_string LIKE '%host_key_fingerprint=SHA256:ATJVJJo261pwXqvVsiQkDjp1txG4h5V/rAtC0Q9nQo8%'
+FROM duckdb_secrets() WHERE name IN ('hk_ok', 'hk_bare') ORDER BY name;
+----
+hk_bare	true
+hk_ok	true
+
+# The fingerprint is public, so it is shown (not redacted) — it is what a user
+# compares against `ssh-keygen -lf`.
+query I
+SELECT secret_string NOT LIKE '%host_key_fingerprint=redacted%' FROM duckdb_secrets() WHERE name = 'hk_ok';
+----
+true
+
+# An MD5 fingerprint (the old ssh-keygen -E md5 format) is rejected, with an example.
+statement error
+CREATE SECRET hk_md5 (TYPE ssh_tunnel, host 'h', user 'u', password 'p',
+    host_key_fingerprint 'MD5:16:27:ac:a5:76:28:2d:36:63:1b:56:4d:eb:df:a6:48');
+----
+Invalid host_key_fingerprint
+
+# Too short.
+statement error
+CREATE SECRET hk_short (TYPE ssh_tunnel, host 'h', user 'u', password 'p',
+    host_key_fingerprint 'SHA256:ATJVJJo261pwXqvVsiQkDjp1');
+----
+ssh-keyscan -p <port> <host> 2>/dev/null | ssh-keygen -lf -
+
+# Right length, but not base64.
+statement error
+CREATE SECRET hk_chars (TYPE ssh_tunnel, host 'h', user 'u', password 'p',
+    host_key_fingerprint 'SHA256:ATJVJJo261pwXqvVsiQkDjp1txG4h5V/rAtC0Q9nQo!');
+----
+Invalid host_key_fingerprint
+
+# Empty.
+statement error
+CREATE SECRET hk_empty (TYPE ssh_tunnel, host 'h', user 'u', password 'p',
+    host_key_fingerprint '');
+----
+Invalid host_key_fingerprint
+
+# A host key belongs to an SSH server; on a mesh secret it would silently do nothing.
+statement error
+CREATE SECRET hk_mesh (TYPE tunnel, backend 'tailscale', auth_key 'k',
+    host_key_fingerprint 'SHA256:ATJVJJo261pwXqvVsiQkDjp1txG4h5V/rAtC0Q9nQo8');
+----
+host_key_fingerprint only applies to backend 'ssh'
+
+# ---------------------------------------------------------------------
+# Live checks against the dockerised bastion (make test_up). Its host key is the
+# committed fixture test/integration/ssh_host_ed25519_key_static, fingerprint
+# SHA256:ATJVJJo261pwXqvVsiQkDjp1txG4h5V/rAtC0Q9nQo8 (ED25519).
+# ---------------------------------------------------------------------
+
+require-env ERPL_SSH_HOST
+
+require-env ERPL_SSH_PORT
+
+require-env ERPL_SSH_PASSWORD
+
+# Right fingerprint: connects, no warning.
+statement ok
+CREATE SECRET hk_live_ok (TYPE ssh_tunnel, host '{ERPL_SSH_HOST}', port '{ERPL_SSH_PORT}',
+    user 'root', password '{ERPL_SSH_PASSWORD}',
+    host_key_fingerprint 'SHA256:ATJVJJo261pwXqvVsiQkDjp1txG4h5V/rAtC0Q9nQo8');
+
+query II
+PRAGMA tunnel_import(secret='hk_live_ok', remote_host='http-service', remote_port=8000, local_port=9070, timeout=30);
+----
+1
+Tunnel created successfully
+
+# The bare base64 form verifies the same way.
+statement ok
+CREATE SECRET hk_live_bare (TYPE ssh_tunnel, host '{ERPL_SSH_HOST}', port '{ERPL_SSH_PORT}',
+    user 'root', password '{ERPL_SSH_PASSWORD}',
+    host_key_fingerprint 'ATJVJJo261pwXqvVsiQkDjp1txG4h5V/rAtC0Q9nQo8');
+
+query II
+PRAGMA tunnel_import(secret='hk_live_bare', remote_host='http-service', remote_port=8000, local_port=9071, timeout=30);
+----
+2
+Tunnel created successfully
+
+statement ok
+PRAGMA tunnel_close_all;
+
+# Wrong fingerprint, with a password that WOULD authenticate: the tunnel must fail,
+# so the connection was refused before authentication. The error names both.
+statement ok
+CREATE SECRET hk_live_wrong (TYPE ssh_tunnel, host '{ERPL_SSH_HOST}', port '{ERPL_SSH_PORT}',
+    user 'root', password '{ERPL_SSH_PASSWORD}',
+    host_key_fingerprint 'SHA256:slLJ2h9qY3fXo2afsGBLpeakUA6ZtMz6NRaeNJBNiwA');
+
+statement error
+PRAGMA tunnel_import(secret='hk_live_wrong', remote_host='http-service', remote_port=8000, local_port=9072, timeout=30);
+----
+expected SHA256:slLJ2h9qY3fXo2afsGBLpeakUA6ZtMz6NRaeNJBNiwA, but the server presented SHA256:ATJVJJo261pwXqvVsiQkDjp1txG4h5V/rAtC0Q9nQo8 (ED25519)
+
+statement error
+PRAGMA tunnel_import(secret='hk_live_wrong', remote_host='http-service', remote_port=8000, local_port=9072, timeout=30);
+----
+no password or key was sent
+
+# Same for key authentication: the key is never offered to the impostor.
+statement ok
+CREATE SECRET hk_live_wrong_key (TYPE ssh_tunnel, host '{ERPL_SSH_HOST}', port '{ERPL_SSH_PORT}',
+    user 'root', private_key_path 'test/integration/test_key_static',
+    host_key_fingerprint 'SHA256:slLJ2h9qY3fXo2afsGBLpeakUA6ZtMz6NRaeNJBNiwA');
+
+statement error
+PRAGMA tunnel_import(secret='hk_live_wrong_key', remote_host='http-service', remote_port=8000, local_port=9073, timeout=30);
+----
+host key verification FAILED
+
+# tunnel_export checks the host key before authenticating, too. Nothing needs to
+# listen on local_port: the local probe fails first only if NOTHING listens, so
+# point it at the bastion's own forwarded port, which always does.
+statement error
+PRAGMA tunnel_export(secret='hk_live_wrong', local_host='{ERPL_SSH_HOST}', local_port={ERPL_SSH_PORT}, timeout=30);
+----
+host key verification FAILED
+
+# No tunnel was left behind by any of the refusals.
+query I
+SELECT count(*) FROM tunnels();
+----
+0
+
+# No fingerprint: connects as before, but the result says the key was NOT verified
+# and shows the real fingerprint plus how to pin it.
+statement ok
+CREATE SECRET hk_live_none (TYPE ssh_tunnel, host '{ERPL_SSH_HOST}', port '{ERPL_SSH_PORT}',
+    user 'root', password '{ERPL_SSH_PASSWORD}');
+
+# (tunnel_id 7: every attempt above, refused or not, drew an id.)
+query II
+PRAGMA tunnel_import(secret='hk_live_none', remote_host='http-service', remote_port=8000, local_port=9074, timeout=30);
+----
+7
+Tunnel created successfully. WARNING: the SSH host key of {ERPL_SSH_HOST}:{ERPL_SSH_PORT} was NOT verified, because the tunnel secret has no host_key_fingerprint. The server presented SHA256:ATJVJJo261pwXqvVsiQkDjp1txG4h5V/rAtC0Q9nQo8 (ED25519). Confirm it out-of-band (ssh-keyscan -p {ERPL_SSH_PORT} {ERPL_SSH_HOST} 2>/dev/null | ssh-keygen -lf -), then pin it on the secret: host_key_fingerprint 'SHA256:ATJVJJo261pwXqvVsiQkDjp1txG4h5V/rAtC0Q9nQo8'.
+
+statement ok
+PRAGMA tunnel_close_all;

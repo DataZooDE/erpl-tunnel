@@ -1,5 +1,6 @@
 #include "tunnel_connection.hpp"
 #include "tunnel_secret.hpp"
+#include "ssh_host_key.hpp"
 
 #include "duckdb/common/exception.hpp"
 #include "duckdb/main/secret/secret_manager.hpp"
@@ -243,7 +244,25 @@ void TunnelConnection::Connect(const std::string& ssh_host, int32_t ssh_port, co
         CloseSocket(ssh_socket_);
         throw IOException("SSH handshake failed. The server may not support SSH or the connection was interrupted.");
     }
-    
+
+    // Verify the server's host key BEFORE anything authenticates (issue #16): on a
+    // mismatch the session is torn down here, so the caller never gets to send a
+    // password or offer a key to whoever answered.
+    try {
+        attributes_.host_key_type = HostKeyTypeLabel(session_);
+        attributes_.host_key_fingerprint =
+            VerifyHostKey(session_, expected_host_key_fingerprint_, ssh_host, ssh_port, "Tunnel");
+        attributes_.host_key_verified = !expected_host_key_fingerprint_.empty();
+    } catch (const std::exception &e) {
+        attributes_.error_message = e.what();
+        libssh2_session_disconnect(session_, "Host key verification failed");
+        libssh2_session_free(session_);
+        session_ = nullptr;
+        CloseSocket(ssh_socket_);
+        ssh_socket_ = -1;
+        throw;
+    }
+
     // Authentication will be handled by the calling code
     is_connected_ = true;
     attributes_.status = kStatusConnected;
@@ -360,6 +379,7 @@ std::string TunnelAuthParams::ToString() const {
 
 std::shared_ptr<TunnelConnection> TunnelAuthParams::Connect(const std::string& remote_host, int32_t remote_port, int32_t local_port) {
     auto connection = std::make_shared<TunnelConnection>();
+    connection->SetExpectedHostKeyFingerprint(host_key_fingerprint);
     connection->Connect(ssh_host, ssh_port, ssh_user, remote_host, remote_port, local_port);
     
     // Authenticate based on the auth method

@@ -6,6 +6,7 @@
 #include "mesh_forwarder.hpp"
 #endif
 #include "duckdb/common/exception.hpp"
+#include "duckdb/common/error_data.hpp"
 #include <thread>
 #include <chrono>
 
@@ -43,6 +44,8 @@ int64_t TunnelManager::CreateTunnel(const TunnelAuthParams &auth_params,
         
         // Loopback bind by default; all-interfaces only on explicit opt-in (FR-2).
         connection->SetBindAll(bind_all);
+        // Pinned host key, checked inside Connect() before authentication (#16).
+        connection->SetExpectedHostKeyFingerprint(auth_params.host_key_fingerprint);
 
         // Connect to SSH server
         connection->Connect(ssh_host, ssh_port, ssh_user,
@@ -90,7 +93,9 @@ int64_t TunnelManager::CreateTunnel(const TunnelAuthParams &auth_params,
         return tunnel_id;
         
     } catch (const std::exception &e) {
-        throw IOException("Failed to create tunnel: " + string(e.what()));
+        // ErrorData unwraps a DuckDB exception to its message; e.what() is the
+        // serialized JSON form on DuckDB 2.0, which buried the real error.
+        throw IOException("Failed to create tunnel: " + ErrorData(e).RawMessage());
     }
 }
 
@@ -138,6 +143,12 @@ int64_t TunnelManager::CreateSshExport(const TunnelAuthParams &auth_params,
         tunnels[tunnel_id] = std::move(exporter);
     }
     return tunnel_id;
+}
+
+TunnelConnectionAttributes TunnelManager::GetTunnelAttributes(int64_t tunnel_id) const {
+    std::lock_guard<std::mutex> lock(tunnels_mutex);
+    auto it = tunnels.find(tunnel_id);
+    return it == tunnels.end() ? TunnelConnectionAttributes() : it->second->GetAttributes();
 }
 
 int TunnelManager::GetTunnelBoundPort(int64_t tunnel_id) const {

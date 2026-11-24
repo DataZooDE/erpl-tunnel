@@ -1,6 +1,7 @@
 #include "tunnel_secret.hpp"
 #include "duckdb_compat.hpp"
 #include "tunnel_connection.hpp"
+#include "ssh_host_key.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/common/string_util.hpp"
 
@@ -42,7 +43,7 @@ unique_ptr<BaseSecret> CreateTunnelSecretFunction(ClientContext &context, Create
         "backend",
         // ssh (host/user/port are friendly aliases for ssh_host/ssh_user/ssh_port)
         "ssh_host", "ssh_port", "ssh_user", "host", "user", "port",
-        "password", "private_key_path", "passphrase", "auth_method",
+        "password", "private_key_path", "passphrase", "auth_method", "host_key_fingerprint",
         // mesh (tailscale / netbird)
         "auth_key", "setup_key", "hostname", "tags", "groups", "control_url",
         "management_url", "state_dir", "ephemeral"};
@@ -60,7 +61,7 @@ unique_ptr<BaseSecret> CreateTunnelSecretFunction(ClientContext &context, Create
             throw InvalidInputException(
                 "Unknown tunnel secret parameter '" + lower_name + "'. Valid parameters:\n"
                 "  SSH:      host/user/port (or ssh_host/ssh_user/ssh_port), password, "
-                "private_key_path, passphrase\n"
+                "private_key_path, passphrase, host_key_fingerprint\n"
                 "  Mesh:     backend ('tailscale'|'netbird'), auth_key, setup_key, hostname, "
                 "tags, groups, control_url, management_url, ephemeral, state_dir");
         }
@@ -72,7 +73,26 @@ unique_ptr<BaseSecret> CreateTunnelSecretFunction(ClientContext &context, Create
         } else if (lower_name == "port") {
             lower_name = "ssh_port";
         }
-        result->secret_map[duckdb_compat::Ident(lower_name)] = named_param.second.ToString();
+        auto value = named_param.second.ToString();
+        if (lower_name == kHostKeyFingerprintKey) {
+            // Reject a malformed fingerprint now, not at the first connect (#16), and
+            // store the canonical "SHA256:<base64>" form.
+            value = NormalizeHostKeyFingerprint(value);
+        }
+        result->secret_map[duckdb_compat::Ident(lower_name)] = value;
+    }
+
+    // A host key belongs to an SSH server. On a mesh secret it would be ignored,
+    // and a security setting that silently does nothing is worse than an error.
+    auto backend_val = result->TryGetValue("backend");
+    auto fingerprint_val = result->TryGetValue(kHostKeyFingerprintKey);
+    if (!fingerprint_val.IsNull() && !backend_val.IsNull()) {
+        auto backend = StringUtil::Lower(backend_val.ToString());
+        if (!backend.empty() && backend != "ssh") {
+            throw InvalidInputException(
+                "host_key_fingerprint only applies to backend 'ssh' (the SSH server's host key); "
+                "this secret uses backend '" + backend + "'. Remove host_key_fingerprint.");
+        }
     }
 
     // Redact every sensitive field across backends (FR-22).
@@ -93,6 +113,7 @@ void SetTunnelSecretParameters(CreateSecretFunction &function) {
     duckdb_compat::AddNamedParameter(function, "private_key_path", LogicalType::VARCHAR);
     duckdb_compat::AddNamedParameter(function, "passphrase", LogicalType::VARCHAR);
     duckdb_compat::AddNamedParameter(function, "auth_method", LogicalType::VARCHAR);
+    duckdb_compat::AddNamedParameter(function, "host_key_fingerprint", LogicalType::VARCHAR);
     // mesh (tailscale / netbird)
     duckdb_compat::AddNamedParameter(function, "auth_key", LogicalType::VARCHAR);
     duckdb_compat::AddNamedParameter(function, "setup_key", LogicalType::VARCHAR);
@@ -166,6 +187,14 @@ TunnelAuthParams ConvertTunnelSecretToAuthParams(const KeyValueSecret &duck_secr
         auth_params.passphrase = passphrase_val.ToString();
     }
     
+    // Pinned host-key fingerprint (#16). Validated again here: a secret persisted
+    // by an older build, or edited by hand, must still fail clearly, not compare
+    // against garbage.
+    auto host_key_val = duck_secret.TryGetValue(kHostKeyFingerprintKey);
+    if (!host_key_val.IsNull()) {
+        auth_params.host_key_fingerprint = NormalizeHostKeyFingerprint(host_key_val.ToString());
+    }
+
     // Extract auth method
     auto auth_method_val = duck_secret.TryGetValue("auth_method");
     if (!auth_method_val.IsNull()) {

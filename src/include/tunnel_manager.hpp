@@ -59,6 +59,8 @@ public:
                             int timeout_seconds = 60);
     // The port actually bound (matters when remote_port was 0).
     int GetTunnelBoundPort(int64_t tunnel_id) const;
+    // A snapshot of one tunnel's attributes; default-constructed if unknown.
+    TunnelConnectionAttributes GetTunnelAttributes(int64_t tunnel_id) const;
     bool CloseTunnel(int64_t tunnel_id);
     bool IsTunnelActive(int64_t tunnel_id) const;
     
