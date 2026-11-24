@@ -71,6 +71,12 @@ struct TunnelConnectionAttributes {
     std::string local_host{"127.0.0.1"};
     std::string status;
     std::string error_message;
+    // SSH only: the SHA256 fingerprint of the host key the server presented, its
+    // type as `ssh-keygen -lf` labels it, and whether it was checked against a
+    // pinned host_key_fingerprint (issue #16). Empty for mesh tunnels.
+    std::string host_key_fingerprint;
+    std::string host_key_type;
+    bool host_key_verified{false};
 
     bool operator==(const TunnelConnectionAttributes& other) const {
         return backend == other.backend &&
@@ -84,7 +90,10 @@ struct TunnelConnectionAttributes {
                local_port == other.local_port &&
                bind_addr == other.bind_addr &&
                status == other.status &&
-               error_message == other.error_message;
+               error_message == other.error_message &&
+               host_key_fingerprint == other.host_key_fingerprint &&
+               host_key_type == other.host_key_type &&
+               host_key_verified == other.host_key_verified;
     }
 
     bool operator!=(const TunnelConnectionAttributes& other) const {
@@ -138,6 +147,13 @@ public:
         attributes_.bind_addr = bind_all ? "0.0.0.0" : "127.0.0.1";
     }
 
+    // The server's expected SHA256 host-key fingerprint (canonical form). When set,
+    // Connect() refuses any other key before authentication; when empty it records
+    // the presented key unverified. Call before Connect (issue #16).
+    void SetExpectedHostKeyFingerprint(const std::string &fingerprint) {
+        expected_host_key_fingerprint_ = fingerprint;
+    }
+
     // Thread management
     void StartWorker();
     void StopWorker();
@@ -170,6 +186,7 @@ private:
     
     // Connection attributes
     TunnelConnectionAttributes attributes_;
+    std::string expected_host_key_fingerprint_;
     
     // Worker thread for data forwarding
     std::thread worker_thread_;
@@ -195,6 +212,8 @@ struct TunnelAuthParams {
     std::string private_key_path;
     std::string passphrase;
     std::string auth_method{kAuthMethodPassword};  // "password", "key", "agent"
+    // Canonical "SHA256:<base64>" or empty when the secret does not pin one.
+    std::string host_key_fingerprint;
 
     static TunnelAuthParams FromContext(ClientContext& context, const std::string& secret_name = "*");
     std::string ToString() const;

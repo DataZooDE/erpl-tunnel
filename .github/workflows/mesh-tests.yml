@@ -104,6 +104,10 @@ jobs:
       # is nearly free, and it is the only CI coverage of libssh2 remote-forward.
       - name: Real HTTP payload OUT of DuckDB over an SSH remote-forward
         run: make ssh_export_e2e
+      # Issue #16: a wrong host_key_fingerprint is refused before sshd logs any
+      # authentication attempt; a missing one warns with the real fingerprint.
+      - name: SSH host-key verification against the real sshd
+        run: make host_key_e2e
       - name: Live-SSH integration tests (these skip without the harness)
         env:
           ERPL_SSH_HOST: 127.0.0.1
@@ -120,6 +124,7 @@ jobs:
                    test/sql/sap_tunnel_integration_password.test \
                    test/sql/sap_tunnel_integration_key.test \
                    test/sql/tunnel_export.test \
+                   test/sql/tunnel_host_key.test \
                    test/sql/tunnel_loopback_bind.test; do
             echo "== $t =="
             # One at a time: these all bind local_port 9000, so a shared runner needs

@@ -17,9 +17,14 @@ services:
       - ./sshd_config:/etc/ssh/sshd_config:ro
       - ./test_key_static.pub:/tmp/test_key_static.pub:ro
       - ./test_key_static_passphrase.pub:/tmp/test_key_static_passphrase.pub:ro
+      # A FIXED host key, so the tests can pin its fingerprint (host_key_fingerprint,
+      # issue #16): SHA256:ATJVJJo261pwXqvVsiQkDjp1txG4h5V/rAtC0Q9nQo8 (ED25519).
+      # sshd refuses a group/world-readable host key, so it is copied in with 0600.
+      - ./ssh_host_ed25519_key_static:/tmp/ssh_host_ed25519_key_static:ro
     command: >
       sh -c "
-        /usr/sbin/sshd -D -f /etc/ssh/sshd_config &
+        install -m 600 /tmp/ssh_host_ed25519_key_static /etc/ssh/ssh_host_test_ed25519_key &&
+        /usr/sbin/sshd -D -E /var/log/sshd.log -f /etc/ssh/sshd_config &
         sleep 5 &&
         sh /setup_ssh.sh &&
         wait

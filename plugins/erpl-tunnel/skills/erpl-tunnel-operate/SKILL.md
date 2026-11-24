@@ -35,6 +35,9 @@ Tunnels live as long as the DuckDB process.
 |---|---|---|
 | `Tunnel: secret 'X' not found` | Secret not created (or other name) | `CREATE SECRET X (TYPE tunnel, …)` first |
 | `SSH agent authentication is not supported` | Agent auth | `auth_method 'key'` + `private_key_path`, or `'password'` |
+| `host key verification FAILED … expected SHA256:…, but the server presented SHA256:…` | Server key differs from `host_key_fingerprint` (interception, or the key changed); nothing was sent | Confirm the new key with the server's admin, then update the secret |
+| `WARNING: the SSH host key of … was NOT verified` in the pragma `message` | Secret has no `host_key_fingerprint` | Check the shown fingerprint out-of-band (`ssh-keyscan … \| ssh-keygen -lf -`), add it to the secret |
+| `Invalid host_key_fingerprint` | MD5 or truncated value | The `SHA256:…` form `ssh-keygen -lf` prints |
 | `local port N is already in use` (mesh) / `Failed to bind to port N…` in `tunnels().status` (SSH) | Port taken | Another `local_port`, and re-point the client (SAP: `GWSERV`) |
 | `tsnet.Up: context deadline exceeded` | Control server unreachable | Check `control_url`; from a container `127.0.0.1` is the container |
 | Tailscale registration refused, or tags missing | `tag:erpl-tunnel` (or a role tag) not owned in `tagOwners` / not on the key | Own the tags, regenerate the key with them; check `tunnel_self(...).tags` |

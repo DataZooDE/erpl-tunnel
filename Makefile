@@ -49,10 +49,10 @@ test_down:
 # unset and the live-SSH sqllogictests self-skip via `require-env`. Bringing the
 # harness up (`make test_up`) and running `make e2e` / `make integration_tests`
 # is what exercises them. Override any of these on the command line as needed.
-e2e integration_tests: export ERPL_SSH_HOST ?= 127.0.0.1
-e2e integration_tests: export ERPL_SSH_PORT ?= 2222
-e2e integration_tests: export ERPL_SSH_USER ?= root
-e2e integration_tests: export ERPL_SSH_PASSWORD ?= testpass
+e2e integration_tests host_key_e2e: export ERPL_SSH_HOST ?= 127.0.0.1
+e2e integration_tests host_key_e2e: export ERPL_SSH_PORT ?= 2222
+e2e integration_tests host_key_e2e: export ERPL_SSH_USER ?= root
+e2e integration_tests host_key_e2e: export ERPL_SSH_PASSWORD ?= testpass
 
 # Real end-to-end payload test: forward a local port through the docker sshd
 # bastion to the private HTTP service and fetch a real response with curl.
@@ -69,6 +69,15 @@ e2e: debug
 ssh_export_e2e: debug
 	DUCKDB_BIN=$(PROJ_DIR)build/debug/duckdb \
 	  test/integration/e2e_ssh_export.sh \
+	  $(EXT_DEBUG)
+
+# Host-key verification (issue #16) against the bastion's fixed host key: a wrong
+# host_key_fingerprint is refused before sshd logs any authentication, a missing
+# one warns with the real key, the right one connects. Requires `make test_up`.
+.PHONY: host_key_e2e
+host_key_e2e: debug
+	DUCKDB_BIN=$(PROJ_DIR)build/debug/duckdb \
+	  test/integration/e2e_host_key.sh \
 	  $(EXT_DEBUG)
 
 # Run the SSH integration sqllogictests against the debug binary (services must be up).

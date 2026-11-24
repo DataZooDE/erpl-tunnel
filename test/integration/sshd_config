@@ -1,10 +1,10 @@
 # Custom SSH daemon configuration for testing
 Port 22
 Protocol 2
-HostKey /etc/ssh/ssh_host_rsa_key
-HostKey /etc/ssh/ssh_host_dsa_key
-HostKey /etc/ssh/ssh_host_ecdsa_key
-HostKey /etc/ssh/ssh_host_ed25519_key
+# One fixed host key (committed test fixture, see docker-compose.yml), so the
+# host_key_fingerprint tests can pin it. Its fingerprint is
+# SHA256:ATJVJJo261pwXqvVsiQkDjp1txG4h5V/rAtC0Q9nQo8 (ED25519).
+HostKey /etc/ssh/ssh_host_test_ed25519_key
 
 # Authentication settings - more permissive for testing
 MaxAuthTries 100

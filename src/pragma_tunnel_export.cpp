@@ -6,6 +6,8 @@
 #include "tunnel_secret.hpp"
 #include "tunnel_connection.hpp"
 #include "ssh_exporter.hpp"
+#include "ssh_host_key.hpp"
+#include "duckdb/parser/keyword_helper.hpp"
 #include "telemetry.hpp"
 #include "erpl_tunnel_banner.hpp"
 
@@ -118,10 +120,14 @@ string TunnelExport(ClientContext &context, const FunctionParameters &parameters
     const int64_t tunnel_id = g_tunnel_manager->CreateSshExport(
         auth_params, local_host, local_port, remote_host, remote_port, timeout_seconds);
     const int bound = g_tunnel_manager->GetTunnelBoundPort(tunnel_id);
-    return StringUtil::Format(
-        "SELECT %lld as tunnel_id, %d as remote_port, "
-        "'Exporting %s:%d via the SSH server' as message",
-        tunnel_id, bound, local_host.c_str(), local_port);
+    // An unpinned SSH host key is reported once, here, at creation (issue #16).
+    std::string message = "Exporting " + local_host + ":" + std::to_string(local_port) + " via the SSH server";
+    const auto host_key_warning = ReportHostKeyStatus(context, g_tunnel_manager->GetTunnelAttributes(tunnel_id));
+    if (!host_key_warning.empty()) {
+        message += ". " + host_key_warning;
+    }
+    return StringUtil::Format("SELECT %lld as tunnel_id, %d as remote_port, %s as message", tunnel_id, bound,
+                              KeywordHelper::WriteQuoted(message, '\''));
 }
 
 static PragmaFunction MakeExportPragma(const char *name) {

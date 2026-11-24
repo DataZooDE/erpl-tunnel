@@ -65,7 +65,8 @@ the right backends for your platform.
 
 ```sql
 CREATE SECRET bastion (TYPE ssh_tunnel,
-    host 'bastion.example.com', user 'jump', password '…');   -- or private_key_path '…'
+    host 'bastion.example.com', user 'jump', password '…',    -- or private_key_path '…'
+    host_key_fingerprint 'SHA256:57vu13dj2yi7gd0ERv87El7PwaTsEfigPRyHu4v1mNo');   -- pins the server's host key
 
 PRAGMA tunnel_import(secret = 'bastion',
     remote_host = 'internal-http', remote_port = 8000, local_port = 9000);
@@ -288,7 +289,8 @@ keep working.
 -- check:skip (field reference, not runnable as written)
 -- SSH (TYPE ssh_tunnel or TYPE tunnel, backend 'ssh')
 CREATE SECRET s (TYPE ssh_tunnel, host '…', port 22, user '…',
-    password '…' /* or */ private_key_path '…', passphrase '…');
+    password '…' /* or */ private_key_path '…', passphrase '…',
+    host_key_fingerprint 'SHA256:…');
 
 -- Tailscale (TYPE tunnel, backend 'tailscale')
 -- Nodes always advertise tag:erpl-tunnel; `tags` adds more. Tags are GRANTED from
@@ -305,6 +307,30 @@ CREATE SECRET s (TYPE tunnel, backend 'netbird', setup_key '…',
 
 Sensitive fields (`password`, `passphrase`, `private_key_path`, `auth_key`,
 `setup_key`) are always redacted in `duckdb_secrets()`.
+
+#### Pinning the SSH server's host key
+
+`host_key_fingerprint` is the server's SHA256 host-key fingerprint, exactly as
+`ssh-keygen -lf` prints it (`SHA256:` plus 43 base64 characters; the bare base64
+part is accepted too). Get it from a machine and network you trust:
+
+```sh
+ssh-keyscan -p 22 bastion.example.com 2>/dev/null | ssh-keygen -lf -
+# 256 SHA256:57vu13dj2yi7gd0ERv87El7PwaTsEfigPRyHu4v1mNo bastion.example.com (ED25519)
+```
+
+- **Set and matching**: the tunnel connects.
+- **Set and different**: the tunnel is refused right after the SSH handshake,
+  *before* authentication — no password is sent and no key is offered. The error
+  names the expected and the presented fingerprint.
+- **Not set**: the tunnel connects as before, but `tunnel_import` / `tunnel_export`
+  return a `WARNING: the SSH host key of … was NOT verified …` in their `message`
+  column (and in DuckDB's log, level WARNING), naming the fingerprint the
+  server presented and how to pin it. If the server offers several key types, pin
+  the one the warning names.
+
+A malformed value (an MD5 fingerprint, a typo) is rejected at `CREATE SECRET`.
+There is no trust-on-first-use and nothing is written to `known_hosts`.
 
 ### One mesh per process
 

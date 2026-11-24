@@ -3,6 +3,8 @@
 #include "duckdb/parser/parsed_data/create_pragma_function_info.hpp"
 #include "tunnel_manager.hpp"
 #include "tunnel_secret.hpp"
+#include "ssh_host_key.hpp"
+#include "duckdb/parser/keyword_helper.hpp"
 #ifdef ERPL_TUNNEL_HAS_MESH
 #include "mesh_backend.hpp"
 #endif
@@ -71,7 +73,14 @@ string TunnelCreate(ClientContext &context, const FunctionParameters &parameters
                                                    auth_params.ssh_user, timeout_seconds, bind_all);
     }
 
-    auto pragma_query = StringUtil::Format("SELECT %lld as tunnel_id, 'Tunnel created successfully' as message", tunnel_id);
+    // An unpinned SSH host key is reported once, here, at creation (issue #16).
+    std::string message = "Tunnel created successfully";
+    const auto host_key_warning = ReportHostKeyStatus(context, g_tunnel_manager->GetTunnelAttributes(tunnel_id));
+    if (!host_key_warning.empty()) {
+        message += ". " + host_key_warning;
+    }
+    auto pragma_query = StringUtil::Format("SELECT %lld as tunnel_id, %s as message", tunnel_id,
+                                           KeywordHelper::WriteQuoted(message, '\''));
     return pragma_query;
 }
 

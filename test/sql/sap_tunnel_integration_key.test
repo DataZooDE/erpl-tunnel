@@ -24,11 +24,13 @@ require-env ERPL_SSH_PASSWORD
 statement ok
 CREATE SECRET tunnel_integration_test_key (
     TYPE ssh_tunnel,
-    ssh_host 'localhost',
-    ssh_port '2222',
+    ssh_host '{ERPL_SSH_HOST}',
+    ssh_port '{ERPL_SSH_PORT}',
     ssh_user 'root',
     private_key_path 'test/integration/test_key_static',
-    auth_method 'key'
+    auth_method 'key',
+    -- the bastion's fixed test host key (issue #16); unpinned tunnels add a warning
+    host_key_fingerprint 'SHA256:ATJVJJo261pwXqvVsiQkDjp1txG4h5V/rAtC0Q9nQo8'
 )
 
 # Create tunnel secret for testing (key authentication with passphrase)
@@ -36,12 +38,14 @@ CREATE SECRET tunnel_integration_test_key (
 statement ok
 CREATE SECRET tunnel_integration_test_key_passphrase (
     TYPE ssh_tunnel,
-    ssh_host 'localhost',
-    ssh_port '2222',
+    ssh_host '{ERPL_SSH_HOST}',
+    ssh_port '{ERPL_SSH_PORT}',
     ssh_user 'root',
     private_key_path 'test/integration/test_key_static_passphrase',
     passphrase 'testpassphrase',
-    auth_method 'key'
+    auth_method 'key',
+    -- the bastion's fixed test host key (issue #16); unpinned tunnels add a warning
+    host_key_fingerprint 'SHA256:ATJVJJo261pwXqvVsiQkDjp1txG4h5V/rAtC0Q9nQo8'
 )
 
 # ---------------------------------------------------------------------

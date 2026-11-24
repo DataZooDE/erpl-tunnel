@@ -34,8 +34,10 @@ Say there's an HTTP service you can only reach *through* an SSH bastion:
 ```sql
 -- 1. the credential
 CREATE SECRET bastion (TYPE ssh_tunnel,
-    host 'bastion.example.com', user 'jump', password 'secret');
+    host 'bastion.example.com', user 'jump', password 'secret',
     -- or: private_key_path '/home/me/.ssh/id_ed25519', passphrase '…'
+    -- the server's host key, from: ssh-keyscan -p 22 bastion.example.com 2>/dev/null | ssh-keygen -lf -
+    host_key_fingerprint 'SHA256:57vu13dj2yi7gd0ERv87El7PwaTsEfigPRyHu4v1mNo');
 
 -- 2. open the tunnel: localhost:9000  ->  bastion  ->  internal-http:8000
 PRAGMA tunnel_import(secret = 'bastion',
@@ -44,6 +46,11 @@ PRAGMA tunnel_import(secret = 'bastion',
 -- 3. use it
 SELECT * FROM read_csv_auto('http://localhost:9000/data.csv');
 ```
+
+Without `host_key_fingerprint` the tunnel still opens, but the pragma's `message`
+warns that the server's host key was not verified and shows the fingerprint to pin.
+A wrong fingerprint refuses the connection before any password or key is sent —
+see [Security notes](security.md#ssh-host-keys--pin-them-with-host_key_fingerprint).
 
 Manage tunnels:
 

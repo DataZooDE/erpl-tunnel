@@ -12,6 +12,22 @@ extension never silently falls back to an anonymous localhost node.
 **`SSH agent authentication is not supported`** — set `auth_method 'key'` (with
 `private_key_path`) or `'password'` on the secret. SSH-agent auth is not implemented.
 
+**`Tunnel: host key verification FAILED for host:port: expected SHA256:…, but the
+server presented SHA256:…`** — the server's host key is not the one pinned in
+`host_key_fingerprint`. Nothing was sent: the connection stopped before
+authentication. Either someone is intercepting the connection or the server's key
+changed (reinstall, new host behind the same name, a different key type). Confirm
+the new fingerprint with the server's administrator before updating the secret
+(`CREATE OR REPLACE SECRET …`).
+
+**`WARNING: the SSH host key of host:port was NOT verified`** — the tunnel works, but
+the secret has no `host_key_fingerprint`. Check the fingerprint shown against
+`ssh-keyscan -p <port> <host> 2>/dev/null | ssh-keygen -lf -` run from a network
+you trust, then add it to the secret.
+
+**`Invalid host_key_fingerprint`** — use the SHA256 form `ssh-keygen -lf` prints
+(`SHA256:` plus 43 base64 characters). MD5 (`MD5:aa:bb:…`) is not accepted.
+
 **`local port N is already in use`** — pick a free `local_port`. The listener binds
 `127.0.0.1` by default; pass `bind_all = true` to `tunnel_import` only if you really
 need all interfaces.
