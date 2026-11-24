@@ -19,6 +19,8 @@ from source if you need them (musl is SSH-only).
 
 ## Unreleased
 
+## v2026.11.24
+
 ### Security
 
 - **[ssh]** SSH tunnels can verify the server's host key (#16). The new secret field `host_key_fingerprint` takes the
